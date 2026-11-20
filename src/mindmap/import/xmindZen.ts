@@ -1,4 +1,20 @@
-import {uuid} from '../../MindMapView'
+import {uuid} from '../uuid'
+
+interface XMindTopic {
+    id: string;
+    title?: string;
+}
+
+interface XMindRelationship {
+    end1Id: string;
+    end2Id: string;
+    title?: string;
+}
+
+interface XMindBoundary {
+    range: string;
+    title?: string;
+}
 
 var mind:{[ket:string]:any}={};
 
@@ -25,7 +41,7 @@ const importXmind=function(data:any){
          transferData(data.rootTopic,null,mainlist,true);
          var root=mainlist[0];
          
-         data.rootTopic.children&&data.rootTopic.children.detached&&data.rootTopic.children.detached.forEach(d=>{
+         data.rootTopic.children&&data.rootTopic.children.detached&&data.rootTopic.children.detached.forEach((d: XMindTopic)=>{
             var list:any[]=[]
             transferData(d,root.id,list);
             mainlist=mainlist.concat(list);
@@ -35,7 +51,7 @@ const importXmind=function(data:any){
         mind.basicData = transferListToData(mainlist);
    
 
-   data.relationships&&data.relationships.forEach(rl=>{
+   data.relationships&&data.relationships.forEach((rl: XMindRelationship)=>{
        var obj={
         startNodeId: rl.end1Id,
         endNodeId: rl.end2Id,
@@ -178,7 +194,7 @@ function transferData(data:any,parentId:any,list?:any,mainFlag?:any){
 
     list.push(node);
 
-    data.children&&data.children.attached&&data.children.attached.forEach(c=>{
+    data.children&&data.children.attached&&data.children.attached.forEach((c: XMindTopic)=>{
         transferData(c,data.id,list);
     });
 
@@ -219,10 +235,10 @@ function transferData(data:any,parentId:any,list?:any,mainFlag?:any){
     });
 
     //wireframe
-    data.boundaries&&data.boundaries.forEach(bum=>{
+    data.boundaries&&data.boundaries.forEach((bum: XMindBoundary)=>{
         var r=bum.range.substring(1,bum.range.length-1);
-        var s=r.split(',')[0];
-        var e=r.split(',')[1];
+        var s=Number(r.split(',')[0]);
+        var e=Number(r.split(',')[1]);
 
         var wf:{[key:string]:any}={
             stroke: "rgb(206, 214, 218)",
@@ -254,7 +270,7 @@ function transferData(data:any,parentId:any,list?:any,mainFlag?:any){
     });
 
     //collout
-    data.children&&data.children.callout&&data.children.callout.forEach(c=>{
+    data.children&&data.children.callout&&data.children.callout.forEach((c: XMindTopic)=>{
        var callout={
            nodeId:data.id,
            color:'#f06',

@@ -7,8 +7,10 @@ export function keepLastIndex(dom:HTMLElement) {
     if ( window.getSelection ) { //ie11 10 9 ff safari
         dom.focus();  //ff
         var range = window.getSelection();
-        range.selectAllChildren(dom);
-        range.collapseToEnd();
+        if (range) {
+            range.selectAllChildren(dom);
+            range.collapseToEnd();
+        }
     }
     // else if ( document.selection ) { //ie10 9 8 7 6 5
     //     var range = document.selection.createRange();
@@ -39,8 +41,8 @@ interface BOX {
 }
 
 export class INodeData implements INode{
-    id:string;
-    text:string;
+    id!:string;
+    text!:string;
     pid?:string;
     mdText?:string;
     isRoot?:Boolean;
@@ -50,8 +52,8 @@ export class INodeData implements INode{
 }
 
 export default class Node {
-    containEl:HTMLElement;
-    contentEl:HTMLElement;
+    containEl!:HTMLElement;
+    contentEl!:HTMLElement;
     box:BOX = {
         x:0,
         y:0,
@@ -70,9 +72,9 @@ export default class Node {
     isHide:boolean=false;
     stroke?:string;
     //isEdit:boolean=false;
-    _barDom:HTMLElement=null;
+    _barDom!:HTMLElement;
     data:any
-    constructor( data:INode,mindMap?:MindMap){
+    constructor( data:INode,mindMap:MindMap){
        this.data = data;
        this.mindmap = mindMap;
        this.initDom();
@@ -116,7 +118,7 @@ export default class Node {
         if (this.data.text.length === 0){
             this.data.text = "Sub title";
         }
-        MarkdownRenderer.renderMarkdown( this.data.text ,this.contentEl,this.mindmap.path||"",null).then(()=>{
+        MarkdownRenderer.renderMarkdown( this.data.text ,this.contentEl,this.mindmap.path||"",this.mindmap.renderComponent).then(()=>{
             this.data.mdText = this.contentEl.innerHTML;
             this.refreshBox();
             this.mindmap&&this.mindmap.emit('initNode',{});
@@ -133,7 +135,7 @@ export default class Node {
                 var pathObj=parseLinktext(src);
                 var fileData ='';
                if(this.mindmap&&this.mindmap.view){
-                    var f = this.mindmap.view.app.metadataCache.getFirstLinkpathDest(pathObj.path,this.mindmap.path);
+                    var f = this.mindmap.view.app.metadataCache.getFirstLinkpathDest(pathObj.path,this.mindmap.path || "");
                     if(f instanceof TFile&&f.extension ==='md'){
                          fileData = await this.mindmap.view.app.vault.adapter.read(f.path);
                          var markdownEmbed = document.createElement('div');
@@ -159,7 +161,7 @@ export default class Node {
 
                         if(pathObj.subpath){
                             var metacache = this.mindmap.view.app.metadataCache.getFileCache(f);
-                            var t=resolveSubpath(metacache,pathObj.subpath);
+                            var t=metacache ? resolveSubpath(metacache,pathObj.subpath) : null;
                          //   console.log(t);
                             if(t&&t.start&&t.end){
                               var md =fileData.substring(t.start.offset,t.end.offset);
@@ -174,7 +176,7 @@ export default class Node {
                         }
 
                         if(md){
-                            MarkdownRenderer.renderMarkdown(md,markdownPreview,this.mindmap.path||"",null).then(()=>{
+                            MarkdownRenderer.renderMarkdown(md,markdownPreview,this.mindmap.path||"",this.mindmap.renderComponent).then(()=>{
                                // this.data.mdText = this.editDom.innerHTML;
                                 this.refreshBox();
                                 //this._delay();
@@ -190,19 +192,18 @@ export default class Node {
          setTimeout(()=>{
              this.contentEl.findAll(".internal-embed").forEach((el) => {
                 const src = el.getAttribute("src");
-                const target =
-                  typeof src === "string" &&
-                  this.mindmap&&this.mindmap.view?.app.metadataCache.getFirstLinkpathDest(src, this.mindmap.path);
-                if (target instanceof TFile && target.extension !== "md" && this.mindmap) {
+                const view = this.mindmap.view;
+                const target = typeof src === "string" && view?.app.metadataCache.getFirstLinkpathDest(src, this.mindmap.path || "");
+                if (target instanceof TFile && target.extension !== "md" && view) {
                   el.innerText = "";
                   el.createEl(
                     "img",
-                    { attr: { src: this.mindmap.view.app.vault.getResourcePath(target) } },
+                    { attr: { src: view.app.vault.getResourcePath(target) } },
                     (img) => {
-                      if (el.hasAttribute("width"))
-                        img.setAttribute("width", el.getAttribute("width"));
-                      if (el.hasAttribute("alt"))
-                        img.setAttribute("alt", el.getAttribute("alt"));
+                      const width = el.getAttribute("width");
+                      const alt = el.getAttribute("alt");
+                      if (width !== null) img.setAttribute("width", width);
+                      if (alt !== null) img.setAttribute("alt", alt);
                     }
                   );
                   el.addClasses(["image-embed", "is-loaded"]);
@@ -291,6 +292,10 @@ export default class Node {
         // }
         if (window.getSelection) {
             var selection = window.getSelection();
+            if (!selection) {
+                console.error('Cannot select node text without a browser selection');
+                return;
+            }
             var range = document.createRange();
             range.selectNodeContents(text);
             selection.removeAllRanges();
@@ -305,6 +310,10 @@ export default class Node {
 
         // Get selection and Create new text
         let l_selection = window.getSelection();
+        if (!l_selection || l_selection.rangeCount === 0) {
+            console.error('Cannot insert text without a browser selection');
+            return;
+        }
         let l_selectedText = l_selection.toString();
 
         l_selectedText = formattedText+l_selectedText;
@@ -327,11 +336,16 @@ export default class Node {
     }
 
 
-    setSelectedText(i_str_1: string, i_str_2: string, i_check: boolean, i_set_as_suffix:boolean, i_select_str: boolean) {
+    setSelectedText(i_str_1: string, i_str_2: string, i_suffix:string, i_check: boolean, i_set_as_suffix:boolean, i_select_str: boolean) {
         let l_str_len = i_str_1.length
+        let l_suf_len = i_suffix.length
 
         // Get selection and Create new text
         let l_selection = window.getSelection();
+        if (!l_selection || l_selection.rangeCount === 0) {
+            console.error('Cannot format text without a browser selection');
+            return;
+        }
         let l_selectedText = l_selection.toString();
 
         // Remove leading space(s)
@@ -355,49 +369,92 @@ export default class Node {
             {// Prefix must be substracted, bold first
                 l_selectedText = l_selectedText.substring(l_str_len); // Remove leading prefix
 
-                if( (l_selectedText.substring(l_selectedText.length-l_str_len) == i_str_1)  ||
-                    (l_selectedText.substring(l_selectedText.length-l_str_len) == i_str_2)  )
-                {// Suffix must be substracted
-                    l_selectedText = l_selectedText.substring(0,l_selectedText.length-l_str_len);
+                if(i_suffix == "") {
+                    if( (l_selectedText.substring(l_selectedText.length-l_str_len) == i_str_1)  ||
+                        (l_selectedText.substring(l_selectedText.length-l_str_len) == i_str_2)  )
+                    {// Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0,l_selectedText.length-l_str_len);
+                    }
+                    // else: no trailing prefix
                 }
-                // else: no trailing prefix
+                else{// A specific suffix is defined
+                    if( l_selectedText.substring(l_selectedText.length-l_suf_len) == i_suffix )
+                    {// Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0,l_selectedText.length-l_suf_len);
+                    }
+                    // else: no suffix
+                }
             }
             else if(    (l_selectedText.substring(1,1+l_str_len) == i_str_1)    ||
                         (l_selectedText.substring(1,1+l_str_len) == i_str_2)    )
             {// Prefix must be substracted, italic (?) first
                 l_selectedText = l_selectedText[0] + l_selectedText.substring(1+l_str_len); // Remove prefix
 
-                if( (l_selectedText.slice(-l_str_len-1, -1) == i_str_1)   ||
-                    (l_selectedText.slice(-l_str_len-1, -1) == i_str_2)   )
-                {// Suffix must be substracted
-                    l_selectedText = l_selectedText.substring(0,l_selectedText.length-1-l_str_len) +
-                        l_selectedText.slice(-1);
+                if(i_suffix == "") {
+                    if( (l_selectedText.slice(-l_str_len-1, -1) == i_str_1)   ||
+                        (l_selectedText.slice(-l_str_len-1, -1) == i_str_2)   )
+                    {// Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0,l_selectedText.length-1-l_str_len) +
+                            l_selectedText.slice(-1);
+                    }
+                    // else: no trailing prefix
                 }
-                // else: no trailing prefix
+                else{// A specific suffix is defined
+                    if( l_selectedText.slice(-l_suf_len-1, -1) == i_str_1 )
+                    {// Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0,l_selectedText.length-1-l_suf_len) +
+                        l_selectedText.slice(-1);
+                    }
+                    // else: no suffix
+                }
             }
             else if(    (l_selectedText.substring(2,2+l_str_len) == i_str_1)  ||
                         (l_selectedText.substring(2,2+l_str_len) == i_str_2)  )
             {// Prefix must be substracted, highlight (?) first
                 l_selectedText = l_selectedText.substring(0,l_str_len) + l_selectedText.substring(4); // Remove prefix
 
-                if( (l_selectedText.slice(-2, -2-l_str_len) == i_str_1) ||
-                    (l_selectedText.slice(-2, -2-l_str_len) == i_str_2) )
-                {// Suffix must be substracted
-                    l_selectedText = l_selectedText.substring(0,l_selectedText.length-2-l_str_len) +
-                    l_selectedText.slice(-2);
+                if(i_suffix == "") {
+                    if( (l_selectedText.slice(-2, -2-l_str_len) == i_str_1) ||
+                        (l_selectedText.slice(-2, -2-l_str_len) == i_str_2) )
+                    {// Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0,l_selectedText.length-2-l_str_len) +
+                        l_selectedText.slice(-2);
+                    }
+                    // else: no trailing prefix
                 }
-                // else: no trailing prefix
+                else{// A specific suffix is defined
+                    if( l_selectedText.slice(-2, -2-l_suf_len) == i_str_1 )
+                    {// Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0,l_selectedText.length-2-l_suf_len) +
+                        l_selectedText.slice(-2);
+                    }
+                    // else: no suffix
+                }
             }
             else {// No pre-/suf-fix: add it
                 l_selectedText = i_str_1+l_selectedText;
                 if(i_set_as_suffix)
-                {   l_selectedText = l_selectedText+i_str_1; }
+                {
+                    if(i_suffix == "") {
+                        l_selectedText = l_selectedText+i_str_1;
+                    }
+                    else{
+                        l_selectedText = l_selectedText+i_suffix;
+                    }
+                }
             }
         }
         else {// No need to check: add the string
             l_selectedText = i_str_1+l_selectedText;
             if(i_set_as_suffix)
-            {   l_selectedText = l_selectedText+i_str_1; }
+            {
+                if(i_suffix == "") {
+                    l_selectedText = l_selectedText+i_str_1;
+                }
+                else{
+                    l_selectedText = l_selectedText+i_suffix;
+                }
+            }
         }
 
         // Add a leading/trailing space if needed
@@ -432,6 +489,10 @@ export default class Node {
     setSelectedText_italic() {
         // Get selection and Create new text
         let l_selection = window.getSelection();
+        if (!l_selection || l_selection.rangeCount === 0) {
+            console.error('Cannot format text without a browser selection');
+            return;
+        }
         let l_selectedText = l_selection.toString();
 
         // Remove leading space(s)
@@ -501,18 +562,18 @@ export default class Node {
         console.log("CancelEdit");
         var text = this.contentEl.innerText.trim()||'';
         if(text.length == 0){
-            text = this._oldText
+            text = this._oldText || ''
         }
         this.data.text = text;
         this.contentEl.innerText = '';
 
-        MarkdownRenderer.renderMarkdown(text,this.contentEl,this.mindmap.path||"",null).then(()=>{
+        MarkdownRenderer.renderMarkdown(text,this.contentEl,this.mindmap.path||"",this.mindmap.renderComponent).then(()=>{
             this.data.mdText = this.contentEl.innerHTML;
             this.refreshBox();
             this._delay();
         });
 
-        if(text != this._oldText){
+        if(this._oldText !== undefined && text != this._oldText){
             this.mindmap.execute('changeNodeText',{
                 node:this,
                 text,
@@ -545,7 +606,7 @@ export default class Node {
 
     getIndex() {
         var l_index = 0;
-        if(!this.data.isRoot)
+        if(!this.data.isRoot && this.parent)
         { l_index = this.parent.children.indexOf(this); }
         return l_index;
     }
@@ -715,7 +776,7 @@ export default class Node {
 
     getLastSibling() {
         var returnedNode = (this as Node);
-        var searchedIdx = this.parent.children.length-1;
+        var searchedIdx = this.parent ? this.parent.children.length-1 : -1;
 
         // Search the sibling
         var sibs = this.getSiblings();
@@ -750,7 +811,7 @@ export default class Node {
     }
 
     clearCacheData(){
-        var anchor:Node = this;
+        var anchor:Node | undefined = this;
         while(anchor){
             anchor.boundingRect=null;
             anchor = anchor.parent;
@@ -759,7 +820,7 @@ export default class Node {
 
     addChild(node:Node, i?:number) {
         if (this.children.indexOf(node) == -1) {
-            if (i > -1) {
+            if (i !== undefined && i > -1) {
                 if (i > this.children.length) i = this.children.length;
                 this.children.splice(i, 0, node);
             } else {

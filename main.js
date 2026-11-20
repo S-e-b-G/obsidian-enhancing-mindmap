@@ -7,36 +7,6 @@ if you want to view the source visit the plugins github repository
 
 var obsidian = require('obsidian');
 
-/******************************************************************************
-Copyright (c) Microsoft Corporation.
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-***************************************************************************** */
-
-function __awaiter(thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-}
-
-typeof SuppressedError === "function" ? SuppressedError : function (error, suppressed, message) {
-    var e = new Error(message);
-    return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
-};
-
 function around(obj, factories) {
     const removers = Object.keys(factories).map(key => around1(obj, key, factories[key]));
     return removers.length === 1 ? removers[0] : function () { removers.forEach(r => r()); };
@@ -160,6 +130,7 @@ var en = {
     'Italicize the node\'s text': 'Italicize the node text',
     'Highlight the node\'s text': 'Highlight the node\'s text',
     'Strike through the node\'s text': 'Strike through the node\'s text',
+    'Set the node\'s text in gray': 'Set the node\'s text in gray 🔘',
     'Add tabulation': 'Add tabulation',
     'Add line break (<br>)': 'Add line break (<br>)',
     'Remove line breaks (<br>)': 'Remove line breaks (<br>)',
@@ -244,6 +215,7 @@ var fr = {
     'Italicize the node\'s text': 'Mettre en italique le texte du nœud',
     'Highlight the node\'s text': 'Mettre en surbrillance le texte du nœud',
     'Strike through the node\'s text': 'Barrer le texte du nœud',
+    'Set the node\'s text in gray': 'Mettre le texte du nœud en gris 🔘',
     'Add tabulation': 'Ajouter une tabulation',
     'Add line break (<br>)': 'Ajouter un retour à la ligne (<br>)',
     'Remove line breaks (<br>)': 'Supprimer les retours à la ligne (<br>)',
@@ -412,8 +384,10 @@ function keepLastIndex(dom) {
     if (window.getSelection) { //ie11 10 9 ff safari
         dom.focus(); //ff
         var range = window.getSelection();
-        range.selectAllChildren(dom);
-        range.collapseToEnd();
+        if (range) {
+            range.selectAllChildren(dom);
+            range.collapseToEnd();
+        }
     }
     // else if ( document.selection ) { //ie10 9 8 7 6 5
     //     var range = document.selection.createRange();
@@ -435,8 +409,6 @@ class Node$1 {
         //isRoot?:boolean;
         this.children = [];
         this.isHide = false;
-        //isEdit:boolean=false;
-        this._barDom = null;
         this.data = data;
         this.mindmap = mindMap;
         this.initDom();
@@ -475,7 +447,7 @@ class Node$1 {
         if (this.data.text.length === 0) {
             this.data.text = "Sub title";
         }
-        obsidian.MarkdownRenderer.renderMarkdown(this.data.text, this.contentEl, this.mindmap.path || "", null).then(() => {
+        obsidian.MarkdownRenderer.renderMarkdown(this.data.text, this.contentEl, this.mindmap.path || "", this.mindmap.renderComponent).then(() => {
             this.data.mdText = this.contentEl.innerHTML;
             this.refreshBox();
             this.mindmap && this.mindmap.emit('initNode', {});
@@ -484,15 +456,15 @@ class Node$1 {
     }
     _delay() {
         //parse md
-        this.contentEl.findAll(".internal-embed").forEach((el) => __awaiter(this, void 0, void 0, function* () {
+        this.contentEl.findAll(".internal-embed").forEach(async (el) => {
             const src = el.getAttribute("src");
             if (typeof src === 'string') {
                 var pathObj = obsidian.parseLinktext(src);
                 var fileData = '';
                 if (this.mindmap && this.mindmap.view) {
-                    var f = this.mindmap.view.app.metadataCache.getFirstLinkpathDest(pathObj.path, this.mindmap.path);
+                    var f = this.mindmap.view.app.metadataCache.getFirstLinkpathDest(pathObj.path, this.mindmap.path || "");
                     if (f instanceof obsidian.TFile && f.extension === 'md') {
-                        fileData = yield this.mindmap.view.app.vault.adapter.read(f.path);
+                        fileData = await this.mindmap.view.app.vault.adapter.read(f.path);
                         var markdownEmbed = document.createElement('div');
                         markdownEmbed.classList.add('markdown-embed');
                         //  var  markdownHead = document.createElement('div');
@@ -514,7 +486,7 @@ class Node$1 {
                         markdownEmbed.appendChild(markdownLink);
                         if (pathObj.subpath) {
                             var metacache = this.mindmap.view.app.metadataCache.getFileCache(f);
-                            var t = obsidian.resolveSubpath(metacache, pathObj.subpath);
+                            var t = metacache ? obsidian.resolveSubpath(metacache, pathObj.subpath) : null;
                             //   console.log(t);
                             if (t && t.start && t.end) {
                                 var md = fileData.substring(t.start.offset, t.end.offset);
@@ -531,7 +503,7 @@ class Node$1 {
                             var md = fileData || '';
                         }
                         if (md) {
-                            obsidian.MarkdownRenderer.renderMarkdown(md, markdownPreview, this.mindmap.path || "", null).then(() => {
+                            obsidian.MarkdownRenderer.renderMarkdown(md, markdownPreview, this.mindmap.path || "", this.mindmap.renderComponent).then(() => {
                                 // this.data.mdText = this.editDom.innerHTML;
                                 this.refreshBox();
                                 //this._delay();
@@ -541,21 +513,22 @@ class Node$1 {
                     }
                 }
             }
-        }));
+        });
         //parse image
         setTimeout(() => {
             this.contentEl.findAll(".internal-embed").forEach((el) => {
-                var _a;
                 const src = el.getAttribute("src");
-                const target = typeof src === "string" &&
-                    this.mindmap && ((_a = this.mindmap.view) === null || _a === void 0 ? void 0 : _a.app.metadataCache.getFirstLinkpathDest(src, this.mindmap.path));
-                if (target instanceof obsidian.TFile && target.extension !== "md" && this.mindmap) {
+                const view = this.mindmap.view;
+                const target = typeof src === "string" && (view === null || view === void 0 ? void 0 : view.app.metadataCache.getFirstLinkpathDest(src, this.mindmap.path || ""));
+                if (target instanceof obsidian.TFile && target.extension !== "md" && view) {
                     el.innerText = "";
-                    el.createEl("img", { attr: { src: this.mindmap.view.app.vault.getResourcePath(target) } }, (img) => {
-                        if (el.hasAttribute("width"))
-                            img.setAttribute("width", el.getAttribute("width"));
-                        if (el.hasAttribute("alt"))
-                            img.setAttribute("alt", el.getAttribute("alt"));
+                    el.createEl("img", { attr: { src: view.app.vault.getResourcePath(target) } }, (img) => {
+                        const width = el.getAttribute("width");
+                        const alt = el.getAttribute("alt");
+                        if (width !== null)
+                            img.setAttribute("width", width);
+                        if (alt !== null)
+                            img.setAttribute("alt", alt);
                     });
                     el.addClasses(["image-embed", "is-loaded"]);
                 }
@@ -634,6 +607,10 @@ class Node$1 {
         // }
         if (window.getSelection) {
             var selection = window.getSelection();
+            if (!selection) {
+                console.error('Cannot select node text without a browser selection');
+                return;
+            }
             var range = document.createRange();
             range.selectNodeContents(text);
             selection.removeAllRanges();
@@ -645,6 +622,10 @@ class Node$1 {
         const formattedText = i_str_1.replace(/ /g, '\u00A0');
         // Get selection and Create new text
         let l_selection = window.getSelection();
+        if (!l_selection || l_selection.rangeCount === 0) {
+            console.error('Cannot insert text without a browser selection');
+            return;
+        }
         let l_selectedText = l_selection.toString();
         l_selectedText = formattedText + l_selectedText;
         // Create a new selection range
@@ -661,10 +642,15 @@ class Node$1 {
         l_selection.removeAllRanges();
         l_selection.addRange(range);
     }
-    setSelectedText(i_str_1, i_str_2, i_check, i_set_as_suffix, i_select_str) {
+    setSelectedText(i_str_1, i_str_2, i_suffix, i_check, i_set_as_suffix, i_select_str) {
         let l_str_len = i_str_1.length;
+        let l_suf_len = i_suffix.length;
         // Get selection and Create new text
         let l_selection = window.getSelection();
+        if (!l_selection || l_selection.rangeCount === 0) {
+            console.error('Cannot format text without a browser selection');
+            return;
+        }
         let l_selectedText = l_selection.toString();
         // Remove leading space(s)
         let l_leadingSpace = false;
@@ -682,43 +668,79 @@ class Node$1 {
             if ((l_selectedText.substring(0, l_str_len) == i_str_1) ||
                 (l_selectedText.substring(0, l_str_len) == i_str_2)) { // Prefix must be substracted, bold first
                 l_selectedText = l_selectedText.substring(l_str_len); // Remove leading prefix
-                if ((l_selectedText.substring(l_selectedText.length - l_str_len) == i_str_1) ||
-                    (l_selectedText.substring(l_selectedText.length - l_str_len) == i_str_2)) { // Suffix must be substracted
-                    l_selectedText = l_selectedText.substring(0, l_selectedText.length - l_str_len);
+                if (i_suffix == "") {
+                    if ((l_selectedText.substring(l_selectedText.length - l_str_len) == i_str_1) ||
+                        (l_selectedText.substring(l_selectedText.length - l_str_len) == i_str_2)) { // Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0, l_selectedText.length - l_str_len);
+                    }
+                    // else: no trailing prefix
                 }
-                // else: no trailing prefix
+                else { // A specific suffix is defined
+                    if (l_selectedText.substring(l_selectedText.length - l_suf_len) == i_suffix) { // Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0, l_selectedText.length - l_suf_len);
+                    }
+                    // else: no suffix
+                }
             }
             else if ((l_selectedText.substring(1, 1 + l_str_len) == i_str_1) ||
                 (l_selectedText.substring(1, 1 + l_str_len) == i_str_2)) { // Prefix must be substracted, italic (?) first
                 l_selectedText = l_selectedText[0] + l_selectedText.substring(1 + l_str_len); // Remove prefix
-                if ((l_selectedText.slice(-l_str_len - 1, -1) == i_str_1) ||
-                    (l_selectedText.slice(-l_str_len - 1, -1) == i_str_2)) { // Suffix must be substracted
-                    l_selectedText = l_selectedText.substring(0, l_selectedText.length - 1 - l_str_len) +
-                        l_selectedText.slice(-1);
+                if (i_suffix == "") {
+                    if ((l_selectedText.slice(-l_str_len - 1, -1) == i_str_1) ||
+                        (l_selectedText.slice(-l_str_len - 1, -1) == i_str_2)) { // Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0, l_selectedText.length - 1 - l_str_len) +
+                            l_selectedText.slice(-1);
+                    }
+                    // else: no trailing prefix
                 }
-                // else: no trailing prefix
+                else { // A specific suffix is defined
+                    if (l_selectedText.slice(-l_suf_len - 1, -1) == i_str_1) { // Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0, l_selectedText.length - 1 - l_suf_len) +
+                            l_selectedText.slice(-1);
+                    }
+                    // else: no suffix
+                }
             }
             else if ((l_selectedText.substring(2, 2 + l_str_len) == i_str_1) ||
                 (l_selectedText.substring(2, 2 + l_str_len) == i_str_2)) { // Prefix must be substracted, highlight (?) first
                 l_selectedText = l_selectedText.substring(0, l_str_len) + l_selectedText.substring(4); // Remove prefix
-                if ((l_selectedText.slice(-2, -2 - l_str_len) == i_str_1) ||
-                    (l_selectedText.slice(-2, -2 - l_str_len) == i_str_2)) { // Suffix must be substracted
-                    l_selectedText = l_selectedText.substring(0, l_selectedText.length - 2 - l_str_len) +
-                        l_selectedText.slice(-2);
+                if (i_suffix == "") {
+                    if ((l_selectedText.slice(-2, -2 - l_str_len) == i_str_1) ||
+                        (l_selectedText.slice(-2, -2 - l_str_len) == i_str_2)) { // Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0, l_selectedText.length - 2 - l_str_len) +
+                            l_selectedText.slice(-2);
+                    }
+                    // else: no trailing prefix
                 }
-                // else: no trailing prefix
+                else { // A specific suffix is defined
+                    if (l_selectedText.slice(-2, -2 - l_suf_len) == i_str_1) { // Suffix must be substracted
+                        l_selectedText = l_selectedText.substring(0, l_selectedText.length - 2 - l_suf_len) +
+                            l_selectedText.slice(-2);
+                    }
+                    // else: no suffix
+                }
             }
             else { // No pre-/suf-fix: add it
                 l_selectedText = i_str_1 + l_selectedText;
                 if (i_set_as_suffix) {
-                    l_selectedText = l_selectedText + i_str_1;
+                    if (i_suffix == "") {
+                        l_selectedText = l_selectedText + i_str_1;
+                    }
+                    else {
+                        l_selectedText = l_selectedText + i_suffix;
+                    }
                 }
             }
         }
         else { // No need to check: add the string
             l_selectedText = i_str_1 + l_selectedText;
             if (i_set_as_suffix) {
-                l_selectedText = l_selectedText + i_str_1;
+                if (i_suffix == "") {
+                    l_selectedText = l_selectedText + i_str_1;
+                }
+                else {
+                    l_selectedText = l_selectedText + i_suffix;
+                }
             }
         }
         // Add a leading/trailing space if needed
@@ -747,6 +769,10 @@ class Node$1 {
     setSelectedText_italic() {
         // Get selection and Create new text
         let l_selection = window.getSelection();
+        if (!l_selection || l_selection.rangeCount === 0) {
+            console.error('Cannot format text without a browser selection');
+            return;
+        }
         let l_selectedText = l_selection.toString();
         // Remove leading space(s)
         let l_leadingSpace = false;
@@ -807,16 +833,16 @@ class Node$1 {
         console.log("CancelEdit");
         var text = this.contentEl.innerText.trim() || '';
         if (text.length == 0) {
-            text = this._oldText;
+            text = this._oldText || '';
         }
         this.data.text = text;
         this.contentEl.innerText = '';
-        obsidian.MarkdownRenderer.renderMarkdown(text, this.contentEl, this.mindmap.path || "", null).then(() => {
+        obsidian.MarkdownRenderer.renderMarkdown(text, this.contentEl, this.mindmap.path || "", this.mindmap.renderComponent).then(() => {
             this.data.mdText = this.contentEl.innerHTML;
             this.refreshBox();
             this._delay();
         });
-        if (text != this._oldText) {
+        if (this._oldText !== undefined && text != this._oldText) {
             this.mindmap.execute('changeNodeText', {
                 node: this,
                 text,
@@ -842,7 +868,7 @@ class Node$1 {
     }
     getIndex() {
         var l_index = 0;
-        if (!this.data.isRoot) {
+        if (!this.data.isRoot && this.parent) {
             l_index = this.parent.children.indexOf(this);
         }
         return l_index;
@@ -879,10 +905,10 @@ class Node$1 {
         this.box = this.getDomBox();
     }
     getBox() {
-        return Object.assign({}, this.box);
+        return { ...{}, ...this.box };
     }
     getCBox() {
-        return Object.assign({}, this.box);
+        return { ...{}, ...this.box };
     }
     getDomBox() {
         var t = parseInt(this.containEl.style.top);
@@ -982,7 +1008,7 @@ class Node$1 {
     }
     getLastSibling() {
         var returnedNode = this;
-        var searchedIdx = this.parent.children.length - 1;
+        var searchedIdx = this.parent ? this.parent.children.length - 1 : -1;
         // Search the sibling
         var sibs = this.getSiblings();
         sibs.forEach((sib) => {
@@ -1016,7 +1042,7 @@ class Node$1 {
     }
     addChild(node, i) {
         if (this.children.indexOf(node) == -1) {
-            if (i > -1) {
+            if (i !== undefined && i > -1) {
                 if (i > this.children.length)
                     i = this.children.length;
                 this.children.splice(i, 0, node);
@@ -1621,8 +1647,8 @@ class Layout {
         this.rights = [];
         this.colors = [];
         this.lineWidth = 2;
-        this.root = node || null;
-        this.mind = (node === null || node === void 0 ? void 0 : node.mindmap) || null;
+        this.root = node;
+        this.mind = node.mindmap;
         this.direct = direct || 'mindmap';
         this.colors = colors || [];
         if (!this.svgDom)
@@ -1985,7 +2011,9 @@ class Layout {
             children.length && children.forEach(function (child) {
                 var direct = child.direct;
                 var childPos = child.getPosition();
-                var childBox = Object.assign({}, child.getBox());
+                var childBox = {
+                    ...child.getBox()
+                };
                 childBox.height = childBox.height + lineWidth;
                 let _stroke = node.stroke ? node.stroke : (child.stroke ? child.stroke : randomColor());
                 if (!child.stroke) {
@@ -7760,9 +7788,11 @@ class History {
     undo() {
         if (this.canUndo()) {
             var command = this.undos.pop();
-            this.redos.push(command);
-            command.undo();
-            this.change(command);
+            if (command) {
+                this.redos.push(command);
+                command.undo();
+                this.change(command);
+            }
         }
     }
     canUndo() {
@@ -7771,9 +7801,11 @@ class History {
     redo() {
         if (this.canRedo()) {
             var command = this.redos.pop();
-            this.undos.push(command);
-            command.redo();
-            this.change(command);
+            if (command) {
+                this.undos.push(command);
+                command.redo();
+                this.change(command);
+            }
         }
     }
     canRedo() {
@@ -7818,8 +7850,6 @@ class Command {
 class AddNode extends Command {
     constructor(node, parent, mind) {
         super('addNode');
-        this.parent = null;
-        this.mind = null;
         this.index = -1;
         this.node = node;
         this.parent = parent;
@@ -7854,16 +7884,17 @@ class AddNode extends Command {
 class RemoveNode extends Command {
     constructor(node, mind) {
         super('removeNode');
-        this.parent = null;
-        this.mind = null;
         this.index = -1;
         this.node = node;
-        this.parent = this.node.parent || null;
+        this.parent = this.node.parent;
         this.mind = mind || this.node.mindmap;
     }
     execute() {
         if (this.node.data.isRoot == true) {
             return false;
+        }
+        if (!this.parent) {
+            throw new Error('Cannot remove a node without its parent');
         }
         this.node.clearCacheData();
         this.mind.clearSelectNode();
@@ -7873,6 +7904,9 @@ class RemoveNode extends Command {
         return true; //exit with no error
     }
     undo() {
+        if (!this.parent) {
+            throw new Error('Cannot restore a removed node without its parent');
+        }
         this.mind.addNode(this.node, this.parent, this.index);
         this.node.clearCacheData();
         this.node.refreshBox();
@@ -7910,30 +7944,40 @@ class ChangeNodeText extends Command {
 }
 class MoveNode extends Command {
     constructor(data) {
+        var _a, _b;
         super('moveNode');
         this.data = {};
         this.index = -1;
+        if (!((_a = data === null || data === void 0 ? void 0 : data.node) === null || _a === void 0 ? void 0 : _a.parent) || (data.type !== 'child' && data.type !== 'siblings')) {
+            throw new Error('Cannot move a node without its original parent and a valid move type');
+        }
         this.data = data;
+        this.node = data.node;
+        this.oldParent = data.node.parent;
         if (this.data.type.indexOf('child') > -1) {
-            this.node = this.data.node;
-            this.oldParent = this.data.oldParent;
+            if (!data.parent) {
+                throw new Error('Cannot move a node without a destination parent');
+            }
             this.parent = this.data.parent;
         }
         else {
-            this.node = this.data.node;
-            this.oldParent = this.node.parent;
             this.dropNode = this.data.dropNode;
-            this.newParent = this.dropNode.parent;
+            this.newParent = (_b = this.dropNode) === null || _b === void 0 ? void 0 : _b.parent;
+            if (!this.dropNode || !this.newParent) {
+                throw new Error('Cannot move a node next to a node without a parent');
+            }
             this.type = this.data.direct;
         }
     }
     execute() {
-        this.node.mindmap.clearSelectNode();
         if (this.data.type.indexOf('child') > -1) {
-            if (this.oldParent) {
-                this.index = this.oldParent.removeChild(this.node);
+            const parent = this.parent;
+            if (!parent) {
+                throw new Error('Cannot move a node without a destination parent');
             }
-            this.parent.addChild(this.node);
+            this.node.mindmap.clearSelectNode();
+            this.index = this.oldParent.removeChild(this.node);
+            parent.addChild(this.node);
             this.node.mindmap.traverseBF((n) => {
                 n.boundingRect = null;
                 n.stroke = '';
@@ -7944,9 +7988,11 @@ class MoveNode extends Command {
             this.node.select();
         }
         else {
-            if (this.oldParent) {
-                this.index = this.oldParent.removeChild(this.node);
+            if (!this.newParent || !this.dropNode) {
+                throw new Error('Cannot move a node next to a node without a parent');
             }
+            this.node.mindmap.clearSelectNode();
+            this.index = this.oldParent.removeChild(this.node);
             this.node.mindmap.traverseBF((n) => {
                 n.boundingRect = null;
                 n.stroke = '';
@@ -7966,22 +8012,28 @@ class MoveNode extends Command {
         return true; //exit with no error
     }
     undo() {
-        this.node.mindmap.clearSelectNode();
         if (this.data.type.indexOf('child') > -1) {
-            this.parent.removeChild(this.node);
-            if (this.oldParent) {
-                this.oldParent.addChild(this.node, this.index);
+            const parent = this.parent;
+            if (!parent) {
+                throw new Error('Cannot undo a node move without its destination parent');
             }
+            this.node.mindmap.clearSelectNode();
+            parent.removeChild(this.node);
+            this.oldParent.addChild(this.node, this.index);
             this.node.mindmap.traverseBF((n) => {
                 n.boundingRect = null;
                 n.stroke = '';
             }, this.node);
-            this.parent.clearCacheData();
+            parent.clearCacheData();
             this.node.clearCacheData();
             this.refresh(this.node.mindmap);
             this.node.select();
         }
         else {
+            if (!this.newParent || !this.dropNode || !this.oldParent) {
+                throw new Error('Cannot undo a node move without its original and destination parents');
+            }
+            this.node.mindmap.clearSelectNode();
             this.newParent.removeChild(this.node);
             this.dropNode.clearCacheData();
             this.oldParent.addChild(this.node, this.index);
@@ -8101,6 +8153,13 @@ class PasteNode extends Command {
     }
 }
 
+function uuid() {
+    function S4() {
+        return (((1 + Math.random()) * 0x10000) | 0).toString(16).substring(1);
+    }
+    return (S4() + S4() + '-' + S4() + '-' + S4());
+}
+
 class Exec {
     constructor() {
         this.history = new History(50);
@@ -8110,60 +8169,80 @@ class Exec {
         switch (name) {
             case 'addChildNode':
             case 'addSiblingNode':
-                if (data) {
+                if (data === null || data === void 0 ? void 0 : data.parent) {
                     var d = {
                         id: uuid(),
                         text: data.text || t('Sub title')
                     };
-                    var parent = data.parent;
-                    var node = new Node$1(d, parent.mindmap);
-                    this.history.execute(new AddNode(node, data.parent, parent.mindmap));
-                    l_return = node;
+                    const parent = data.parent;
+                    const newNode = new Node$1(d, parent.mindmap);
+                    this.history.execute(new AddNode(newNode, parent, parent.mindmap));
+                    l_return = newNode;
+                }
+                else {
+                    throw new Error('Cannot add a node without a parent');
                 }
                 break;
             case 'deleteNodeAndChild':
-                if (data) {
-                    var node = data.node;
+                if (data === null || data === void 0 ? void 0 : data.node) {
+                    const node = data.node;
                     this.history.execute(new RemoveNode(node, node.mindmap));
+                }
+                else {
+                    throw new Error('Cannot delete a node without a selection');
                 }
                 break;
             case 'deleteNodeExcludeChild':
                 break;
             case 'changeNodeText':
-                if (data) {
+                if ((data === null || data === void 0 ? void 0 : data.node) && data.oldText !== undefined && data.text !== undefined) {
                     this.history.execute(new ChangeNodeText(data.node, data.oldText, data.text));
+                }
+                else {
+                    throw new Error('Cannot change node text without a node and its old and new text');
                 }
                 break;
             case 'moveNode':
+                if (!data) {
+                    throw new Error('Cannot move a node without move data');
+                }
                 console.log("inHistory:");
                 console.log(data.inHistory);
                 if (data.inHistory === undefined || data.inHistory == true) {
-                    if (data) {
-                        this.history.execute(new MoveNode(data));
-                    }
+                    this.history.execute(new MoveNode(data));
                 }
                 else { // inHistory == false
-                    if (data) {
-                        (new MoveNode(data)).execute();
-                    }
+                    (new MoveNode(data)).execute();
                 }
                 break;
             case 'movePosition':
-                if (data) {
+                if ((data === null || data === void 0 ? void 0 : data.node) && data.oldPos && data.newPos) {
                     this.history.execute(new MovePos(data.node, data.oldPos, data.newPos));
+                }
+                else {
+                    throw new Error('Cannot move a position without a node and its old and new positions');
                 }
                 break;
             case 'expandNode':
-                if (data) {
+                if (data === null || data === void 0 ? void 0 : data.node) {
                     this.history.execute(new ExpandNode(data.node));
+                }
+                else {
+                    throw new Error('Cannot expand without a node');
                 }
                 break;
             case 'collapseNode':
-                if (data) {
+                if (data === null || data === void 0 ? void 0 : data.node) {
                     this.history.execute(new CollapseNode(data.node));
+                }
+                else {
+                    throw new Error('Cannot collapse without a node');
                 }
                 break;
             case 'pasteNode':
+                if (!(data === null || data === void 0 ? void 0 : data.node)) {
+                    throw new Error('Cannot paste without a destination node');
+                }
                 this.history.execute(new PasteNode(data.node, data.data));
                 break;
         }
@@ -8196,14 +8275,14 @@ const importXmind = function (data) {
     var mainlist = [];
     transferData(data.rootTopic, null, mainlist, true);
     var root = mainlist[0];
-    data.rootTopic.children && data.rootTopic.children.detached && data.rootTopic.children.detached.forEach(d => {
+    data.rootTopic.children && data.rootTopic.children.detached && data.rootTopic.children.detached.forEach((d) => {
         var list = [];
         transferData(d, root.id, list);
         mainlist = mainlist.concat(list);
     });
     mind.mindData.push(mainlist);
     mind.basicData = transferListToData(mainlist);
-    data.relationships && data.relationships.forEach(rl => {
+    data.relationships && data.relationships.forEach((rl) => {
         var obj = {
             startNodeId: rl.end1Id,
             endNodeId: rl.end2Id,
@@ -8322,7 +8401,7 @@ function transferData(data, parentId, list, mainFlag) {
         });
     }
     list.push(node);
-    data.children && data.children.attached && data.children.attached.forEach(c => {
+    data.children && data.children.attached && data.children.attached.forEach((c) => {
         transferData(c, data.id, list);
     });
     //induce
@@ -8357,10 +8436,10 @@ function transferData(data, parentId, list, mainFlag) {
         mind.induceData.push(induceData);
     });
     //wireframe
-    data.boundaries && data.boundaries.forEach(bum => {
+    data.boundaries && data.boundaries.forEach((bum) => {
         var r = bum.range.substring(1, bum.range.length - 1);
-        var s = r.split(',')[0];
-        var e = r.split(',')[1];
+        var s = Number(r.split(',')[0]);
+        var e = Number(r.split(',')[1]);
         var wf = {
             stroke: "rgb(206, 214, 218)",
             fill: "transparent",
@@ -8389,7 +8468,7 @@ function transferData(data, parentId, list, mainFlag) {
         mind.wireFrameData.push(wf);
     });
     //collout
-    data.children && data.children.callout && data.children.callout.forEach(c => {
+    data.children && data.children.callout && data.children.callout.forEach((c) => {
         var callout = {
             nodeId: data.id,
             color: '#f06',
@@ -8423,8 +8502,10 @@ let addIcon = '<svg class="icon" width="16px" height="16.00px" viewBox="0 0 1024
 let tempDispLevel = 0;
 class MindMap {
     constructor(data, containerEL, setting) {
+        var _a;
         this._nodeNum = 0;
         this._tempNum = 0;
+        this.renderComponent = new obsidian.Component();
         this.colors = [];
         this.scalePointer = [];
         this.mindScale = 100;
@@ -8442,8 +8523,9 @@ class MindMap {
             exportMdModel: 'default',
             headLevel: 2,
             layoutDirect: ''
-        }, setting || {});
+        }, setting || {}, { canvasSize: (_a = setting === null || setting === void 0 ? void 0 : setting.canvasSize) !== null && _a !== void 0 ? _a : 36000 });
         this.data = data;
+        this.renderComponent.load();
         this.appEl = document.createElement('div');
         this.appEl.classList.add('mm-mindmap');
         this.appEl.classList.add(`mm-theme-${this.setting.theme}`);
@@ -8539,6 +8621,9 @@ class MindMap {
                 n.data.isRoot = true;
             }
             else {
+                if (!p) {
+                    throw new Error("Cannot initialize a non-root mind-map node without a parent");
+                }
                 n.setPosition(0, 0);
                 p.children.push(n);
                 n.parent = p;
@@ -8592,7 +8677,7 @@ class MindMap {
         recurse(node || this.root);
     }
     getNodeById(id) {
-        var snode = null;
+        var snode;
         this.traverseDF((n) => {
             if (n.getId() == id) {
                 snode = n;
@@ -8600,17 +8685,28 @@ class MindMap {
         });
         return snode;
     }
+    getNodeFromElement(element) {
+        const nodeElement = element.closest('.mm-node');
+        if (!nodeElement)
+            return;
+        const id = nodeElement.getAttribute('data-id');
+        const node = id ? this.getNodeById(id) : undefined;
+        if (!node) {
+            console.error("Could not find mind-map node for element", nodeElement);
+        }
+        return node;
+    }
     clearSelectNode() {
         if (this.selectNode) {
             this.lastSelectedNode = this.selectNode;
             this.selectNode.unSelect();
-            this.selectNode = null;
+            this.selectNode = undefined;
         }
         if (this.editNode) {
             if (this.editNode.data.isEdit) {
                 this.editNode.cancelEdit();
             }
-            this.editNode = null;
+            this.editNode = undefined;
         }
         // if(this.selectingNodes)
         // {// Add the node to the selectedNodes
@@ -8661,7 +8757,7 @@ class MindMap {
         this.appEl.removeEventListener('dragstart', this.appDragstart);
         this.appEl.removeEventListener('dragover', this.appDragover);
         this.appEl.removeEventListener('dragend', this.appDragend);
-        this.appEl.removeEventListener('dblClick', this.appDblclickFn);
+        this.appEl.removeEventListener('dblclick', this.appDblclickFn);
         this.appEl.removeEventListener('mouseover', this.appMouseOverFn);
         this.appEl.removeEventListener('drop', this.appDrop);
         document.removeEventListener('keyup', this.appKeyup);
@@ -8822,7 +8918,7 @@ class MindMap {
                 var node = this.selectNode;
                 if (node && node.data.isEdit) {
                     node.select();
-                    node.mindmap.editNode = null;
+                    node.mindmap.editNode = undefined;
                     node.cancelEdit();
                     this.undo();
                     //this.selectNode.unSelect();
@@ -8835,7 +8931,8 @@ class MindMap {
                 var node = this.selectNode;
                 if (node && !node.data.isEdit) {
                     var l_selectedNode = node;
-                    while ((this.selectNode == node) &&
+                    while (l_selectedNode &&
+                        (this.selectNode == node) &&
                         (l_selectedNode != this.root)) {
                         this._selectNode(l_selectedNode, "up");
                         l_selectedNode = l_selectedNode.parent;
@@ -8848,7 +8945,8 @@ class MindMap {
                 var node = this.selectNode;
                 if (node && !node.data.isEdit) {
                     var l_selectedNode = node;
-                    while ((this.selectNode == node) &&
+                    while (l_selectedNode &&
+                        (this.selectNode == node) &&
                         (l_selectedNode != this.root)) {
                         this._selectNode(l_selectedNode, "down");
                         l_selectedNode = l_selectedNode.parent;
@@ -8862,12 +8960,11 @@ class MindMap {
                 if (node && !node.data.isEdit) {
                     var rootPos = this.root.getPosition();
                     var nodePos = node.getPosition();
-                    if (rootPos.x > nodePos.x) { // Node on left side of the mindmap
+                    if (rootPos.x > nodePos.x && node.parent) { // Node on left side of the mindmap
                         node.unSelect();
                         node.parent.select();
                     }
                     else {
-                        var node = this.selectNode;
                         node.mindmap.execute('expandNode', {
                             node
                         });
@@ -8882,12 +8979,11 @@ class MindMap {
                 if (node && !node.data.isEdit) {
                     var rootPos = this.root.getPosition();
                     var nodePos = node.getPosition();
-                    if (rootPos.x < nodePos.x) { // Node on right side of the mindmap
+                    if (rootPos.x < nodePos.x && node.parent) { // Node on right side of the mindmap
                         node.unSelect();
                         node.parent.select();
                     }
                     else {
-                        var node = this.selectNode;
                         node.mindmap.execute('expandNode', {
                             node
                         });
@@ -9131,7 +9227,7 @@ class MindMap {
         var viewportHeight = this.containerEL.clientHeight;
         var diagonalViewport = Math.sqrt(viewportWidth * viewportWidth + viewportHeight * viewportHeight);
         const MAX_PARENT_DISTANCE = diagonalViewport / 5;
-        var waitNode = null;
+        var waitNode;
         var nodePos = node.getPosition();
         // var mind = this;
         var rootPos = this.root.getPosition();
@@ -9237,7 +9333,7 @@ class MindMap {
         if (!node.isExpand)
             return;
         var minDis;
-        var waitNode = null;
+        var waitNode;
         var pos = node.getPosition();
         if (node.children) {
             node.children.forEach(n => {
@@ -9279,39 +9375,71 @@ class MindMap {
         }
         return waitNode;
     }
-    _formatNode(node, i_prefix_1, i_prefix_2) {
+    _formatNode(node, i_prefix_1, i_prefix_2, i_suffix = "") {
         var text = node.data.text;
-        if ((text.substring(0, 2) == i_prefix_1) ||
-            (text.substring(0, 2) == i_prefix_2)) { // Prefix must be substracted, bold first
-            text = text.substring(2); // Remove leading prefix
-            if ((text.substring(text.length - 2) == i_prefix_1) ||
-                (text.substring(text.length - 2) == i_prefix_2)) { // Suffix must be substracted
-                text = text.substring(0, text.length - 2);
+        var l_pre_length = i_prefix_1.length;
+        var l_suf_length = i_suffix.length;
+        if ((text.substring(0, l_pre_length) == i_prefix_1) ||
+            (text.substring(0, l_pre_length) == i_prefix_2)) { // Prefix must be substracted, bold first
+            text = text.substring(l_pre_length); // Remove leading prefix
+            if (i_suffix == "") {
+                if ((text.substring(text.length - l_pre_length) == i_prefix_1) ||
+                    (text.substring(text.length - l_pre_length) == i_prefix_2)) { // Suffix must be substracted
+                    text = text.substring(0, text.length - l_pre_length);
+                }
+                // else: no trailing prefix
             }
-            // else: no trailing prefix
+            else {
+                if ((text.substring(text.length - l_suf_length) == i_suffix)) { // Suffix must be substracted
+                    text = text.substring(0, text.length - l_suf_length);
+                }
+            }
         }
-        else if ((text.substring(1, 3) == i_prefix_1) ||
-            (text.substring(1, 3) == i_prefix_2)) { // Prefix must be substracted, italic (?) first
-            text = text[0] + text.substring(3); // Remove prefix
-            if ((text.slice(-3, -1) == i_prefix_1) ||
-                (text.slice(-3, -1) == i_prefix_2)) { // Suffix must be substracted
-                text = text.substring(0, text.length - 3) +
-                    text.slice(-1);
+        else if ((text.substring(1, l_pre_length + 1) == i_prefix_1) ||
+            (text.substring(1, l_pre_length + 1) == i_prefix_2)) { // Prefix must be substracted, italic (?) first
+            text = text[0] + text.substring(l_pre_length + 1); // Remove prefix
+            if (i_suffix == "") {
+                if ((text.slice(-(l_pre_length + 1), -1) == i_prefix_1) ||
+                    (text.slice(-(l_pre_length + 1), -1) == i_prefix_2)) { // Suffix must be substracted
+                    text = text.substring(0, text.length - (l_pre_length + 1)) +
+                        text.slice(-1);
+                }
+                // else: no trailing prefix
             }
-            // else: no trailing prefix
+            else {
+                if (text.slice(-(l_suf_length + 1), -1) == i_suffix) { // Suffix must be substracted
+                    text = text.substring(0, text.length - (l_suf_length + 1)) +
+                        text.slice(-1);
+                }
+                // else: no Suffix
+            }
         }
-        else if ((text.substring(2, 4) == i_prefix_1) ||
-            (text.substring(2, 4) == i_prefix_2)) { // Prefix must be substracted, highlight (?) first
-            text = text.substring(0, 2) + text.substring(4); // Remove prefix
-            if ((text.slice(-4, -2) == i_prefix_1) ||
-                (text.slice(-4, -2) == i_prefix_2)) { // Suffix must be substracted
-                text = text.substring(0, text.length - 4) +
-                    text.slice(-2);
+        else if ((text.substring(2, l_pre_length + 2) == i_prefix_1) ||
+            (text.substring(2, l_pre_length + 2) == i_prefix_2)) { // Prefix must be substracted, highlight (?) first
+            text = text.substring(0, 2) + text.substring(l_pre_length + 2); // Remove prefix
+            if (i_suffix == "") {
+                if ((text.slice(-(l_pre_length + 2), -2) == i_prefix_1) ||
+                    (text.slice(-(l_pre_length + 2), -2) == i_prefix_2)) { // Suffix must be substracted
+                    text = text.substring(0, text.length - (l_pre_length + 2)) +
+                        text.slice(-2);
+                }
+                // else: no trailing prefix
             }
-            // else: no trailing prefix
+            else {
+                if (text.slice(-(l_suf_length + 2), -2) == i_suffix) { // Suffix must be substracted
+                    text = text.substring(0, text.length - (l_suf_length + 2)) +
+                        text.slice(-2);
+                }
+                // else: no Suffix
+            }
         }
         else { // No pre-/suf-fix: add it
-            text = i_prefix_1 + text + i_prefix_1;
+            if (i_suffix == "") {
+                text = i_prefix_1 + text + i_prefix_1;
+            }
+            else {
+                text = i_prefix_1 + text + i_suffix;
+            }
         }
         // Set the text in the node
         node.mindmap.execute('changeNodeText', {
@@ -9326,7 +9454,8 @@ class MindMap {
     _moveAsParent(node) {
         if ((!node.data.isEdit) &&
             (!node.data.isRoot) &&
-            (node.getLevel() > 1)) { // The node can be moved
+            (node.getLevel() > 1) &&
+            node.parent) { // The node can be moved
             this.moveNode(node, node.parent, 'down');
         }
         return;
@@ -9358,7 +9487,7 @@ class MindMap {
             return;
         }
         var minDis;
-        var waitNode = null;
+        var waitNode;
         var pos = node.getPosition();
         var rootPos = this.root.getPosition();
         var level = node.getLevel();
@@ -9468,22 +9597,23 @@ class MindMap {
         }
     }
     appClickFn(evt) {
-        var _a;
+        var _a, _b;
         var targetEl = evt.target;
         if (targetEl) {
             if (targetEl.tagName == 'A' && targetEl.hasClass("internal-link")) {
                 evt.preventDefault();
                 var targetEl = evt.target;
                 var href = targetEl.getAttr("href");
-                if (href) {
+                if (href && ((_a = this.view) === null || _a === void 0 ? void 0 : _a.file)) {
                     this.view.app.workspace.openLinkText(href, this.view.file.path, evt.ctrlKey || evt.metaKey);
                 }
             }
             if (targetEl.hasClass('mm-node-bar')) {
                 evt.preventDefault();
                 evt.stopPropagation();
-                var id = targetEl.closest('.mm-node').getAttribute('data-id');
-                var node = this.getNodeById(id);
+                var node = this.getNodeFromElement(targetEl);
+                if (!node)
+                    return;
                 if (node.isExpand) {
                     node.mindmap.execute('collapseNode', {
                         node
@@ -9506,7 +9636,7 @@ class MindMap {
                 }
                 if (targetEl.closest('.mm-icon-delete-node')) {
                     var selectNode = this.selectNode;
-                    if (!node.data.isRoot && selectNode) {
+                    if (selectNode && !selectNode.data.isRoot) {
                         selectNode.mindmap.execute("deleteNodeAndChild", { node: selectNode });
                         this._menuDom.style.display = 'none';
                     }
@@ -9514,12 +9644,13 @@ class MindMap {
                 return;
             }
             if (targetEl.closest('.mm-node')) {
-                var id = targetEl.closest('.mm-node').getAttribute('data-id');
-                var node = this.getNodeById(id);
+                var node = this.getNodeFromElement(targetEl);
+                if (!node)
+                    return;
                 if (!node.isSelect) {
                     this.clearSelectNode();
                     this.selectNode = node;
-                    (_a = this.selectNode) === null || _a === void 0 ? void 0 : _a.select();
+                    (_b = this.selectNode) === null || _b === void 0 ? void 0 : _b.select();
                     // this._menuDom.style.display='block';
                     this._menuDom.style.display = 'none';
                     this.selectNode.getBox();
@@ -9539,14 +9670,14 @@ class MindMap {
         this.startY = evt.pageY;
         if (evt.target instanceof HTMLElement) {
             if (evt.target.closest('.mm-node')) {
-                var id = evt.target.closest('.mm-node').getAttribute('data-id');
-                this._dragNode = this.getNodeById(id);
-                this.drag = true;
+                this._dragNode = this.getNodeFromElement(evt.target);
+                this.drag = !!this._dragNode;
             }
         }
     }
     appDragend(evt) {
         this.drag = false;
+        this._dragNode = undefined;
         this._indicateDom.style.display = 'none';
         this._menuDom.style.display = 'none';
     }
@@ -9556,13 +9687,16 @@ class MindMap {
         var target = evt.target;
         var x = evt.pageX;
         var y = evt.pageY;
-        if (this.drag) {
+        if (this.drag && this.startX !== undefined && this.startY !== undefined) {
             this.dx = x - this.startX;
-            this.dx = y - this.startY;
+            this.dy = y - this.startY;
         }
         if (target.closest('.mm-node')) {
-            var nodeId = target.closest('.mm-node').getAttribute('data-id');
-            var node = this.getNodeById(nodeId);
+            var node = this.getNodeFromElement(target);
+            if (!node) {
+                this._indicateDom.style.display = 'none';
+                return;
+            }
             var box = node.getBox();
             this._dragType = this._getDragType(node, x, y);
             this._indicateDom.style.display = 'block';
@@ -9597,8 +9731,6 @@ class MindMap {
         }
     }
     _getDragType(node, x, y) {
-        if (!node)
-            return;
         var box = node.contentEl.getBoundingClientRect();
         box.x = box.x;
         box.y = box.y;
@@ -9646,17 +9778,17 @@ class MindMap {
         if (evt.target instanceof HTMLElement) {
             if (evt.target.closest('.mm-node')) {
                 evt.preventDefault();
-                var dropNodeId = evt.target.closest('.mm-node').getAttribute('data-id');
-                var dropNode = this.getNodeById(dropNodeId);
-                if (this._dragNode.data.isRoot) ;
-                else {
-                    if (evt.ctrlKey) { // Ctrl key pressed: copy the node
-                        let copiedNode = this.copyNode(this._dragNode);
-                        dropNode.select();
-                        this.pasteNode(copiedNode);
-                    }
-                    else { // Move the node
-                        this.moveNode(this._dragNode, dropNode, this._dragType);
+                if (this._dragNode) {
+                    var dropNode = this.getNodeFromElement(evt.target);
+                    if (dropNode && !this._dragNode.data.isRoot) {
+                        if (evt.ctrlKey) { // Ctrl key pressed: copy the node
+                            let copiedNode = this.copyNode(this._dragNode);
+                            dropNode.select();
+                            this.pasteNode(copiedNode);
+                        }
+                        else { // Move the node
+                            this.moveNode(this._dragNode, dropNode, this._dragType);
+                        }
                     }
                 }
             }
@@ -9669,6 +9801,11 @@ class MindMap {
                     var me = this;
                     var reader = new FileReader();
                     reader.onload = () => {
+                        if (!(reader.result instanceof ArrayBuffer)) {
+                            console.error('Could not read XMind file as an ArrayBuffer');
+                            new obsidian.Notice('Parse xmind error');
+                            return;
+                        }
                         jszip_min.loadAsync(reader.result).then((e) => {
                             var files = e.files;
                             for (var k in files) {
@@ -9699,10 +9836,11 @@ class MindMap {
         this._menuDom.style.display = 'none';
     }
     appMouseOverFn(evt) {
+        var _a;
         const targetEl = evt.target;
         if (targetEl.tagName !== "A")
             return;
-        if (targetEl.hasClass("internal-link")) {
+        if (targetEl.hasClass("internal-link") && ((_a = this.view) === null || _a === void 0 ? void 0 : _a.file)) {
             this.view.app.workspace.trigger("hover-link", {
                 event: evt,
                 source: frontMatterKey,
@@ -9718,8 +9856,7 @@ class MindMap {
         this.scalePointer = [];
         this.scalePointer.push(evt.offsetX, evt.offsetY);
         if (targetEl.closest('.mm-node')) {
-            var id = targetEl.closest('.mm-node').getAttribute('data-id');
-            var node = this.getNodeById(id);
+            var node = this.getNodeFromElement(targetEl);
             if (node) {
                 var box = node.getBox();
                 this.scalePointer = [];
@@ -9727,7 +9864,8 @@ class MindMap {
             }
         }
         else {
-            if (this.drag) {
+            if (this.drag && this._left !== undefined && this._top !== undefined &&
+                this.startX !== undefined && this.startY !== undefined) {
                 this.containerEL.scrollLeft = this._left - (evt.pageX - this.startX);
                 this.containerEL.scrollTop = this._top - (evt.pageY - this.startY);
             }
@@ -9755,8 +9893,9 @@ class MindMap {
                 return;
             }
             if (evt.target.closest('.mm-node') instanceof HTMLElement) {
-                var id = evt.target.closest('.mm-node').getAttribute('data-id');
-                this.selectNode = this.getNodeById(id);
+                this.selectNode = this.getNodeFromElement(evt.target);
+                if (!this.selectNode)
+                    return;
                 if (!this.editNode || (this.editNode && this.editNode != this.selectNode)) {
                     (_a = this.selectNode) === null || _a === void 0 ? void 0 : _a.edit();
                     this.editNode = this.selectNode;
@@ -9806,6 +9945,7 @@ class MindMap {
         this.clearNode();
         this.removeEvent();
         (_a = this.draw) === null || _a === void 0 ? void 0 : _a.clear();
+        this.renderComponent.unload();
     }
     //get node list rect point
     getBoundingRect(list) {
@@ -9926,9 +10066,10 @@ class MindMap {
         // node.setText(node.data.text + " (…) " + joinedNode.data.text);
         if (!joinedNode.isLeaf()) { // The joined node has children: copy them to the current node
             joinedNode.children.forEach((n) => {
+                var _a;
                 //this._moveAsChild(n, node);
                 let copiedNode = this.copyNode(n);
-                this.selectNode.unSelect();
+                (_a = this.selectNode) === null || _a === void 0 ? void 0 : _a.unSelect();
                 node.select();
                 this.pasteNode(copiedNode);
             });
@@ -10267,6 +10408,12 @@ class MindMap {
     }
     pasteNode(text) {
         var node = this.selectNode;
+        if (!text)
+            return;
+        if (!node) {
+            console.error('Cannot paste a mind-map node without a selection');
+            return;
+        }
         if (text) {
             try {
                 var json = JSON.parse(text);
@@ -38892,12 +39039,6 @@ var domToImageMore = createCommonjsModule(function (module, exports) {
 })(commonjsGlobal);
 });
 
-function uuid() {
-    function S4() {
-        return (((1 + Math.random()) * 0x10000) | 0).toString(16).substring(1);
-    }
-    return (S4() + S4() + '-' + S4() + '-' + S4());
-}
 const transformer = new browser.Transformer();
 const mindmapViewType = "mindmapView";
 const mindmapIcon = "blocks";
@@ -38929,20 +39070,23 @@ class MindMapView extends obsidian.TextFileView {
         }
     }
     exportToSvg() {
-        if (!this.mindmap) {
+        const mindmap = this.mindmap;
+        if (!mindmap || !mindmap.path) {
+            new obsidian.Notice('Cannot export a mindmap without an open file');
             return;
         }
+        const path = mindmap.path;
         // this.mindmap.contentEL.style.visibility='hidden';
         var nodes = [];
-        this.mindmap.traverseDF((n) => {
+        mindmap.traverseDF((n) => {
             if (n.isShow()) {
                 nodes.push(n);
             }
         });
-        var oldScrollLeft = this.mindmap.containerEL.scrollLeft;
-        var oldScrollTop = this.mindmap.containerEL.scrollTop;
-        var box = this.mindmap.getBoundingRect(nodes);
-        var rootBox = this.mindmap.root.getPosition();
+        var oldScrollLeft = mindmap.containerEL.scrollLeft;
+        var oldScrollTop = mindmap.containerEL.scrollTop;
+        var box = mindmap.getBoundingRect(nodes);
+        var rootBox = mindmap.root.getPosition();
         var disX = 0, disY = 0;
         if (box.x > 60) {
             disX = box.x - 60;
@@ -38950,101 +39094,120 @@ class MindMapView extends obsidian.TextFileView {
         if (box.y > 60) {
             disY = box.y - 60;
         }
-        this.mindmap.root.setPosition(rootBox.x - disX, rootBox.y - disY);
-        this.mindmap.refresh();
+        mindmap.root.setPosition(rootBox.x - disX, rootBox.y - disY);
+        mindmap.refresh();
         var w = box.width + 120;
         var h = box.height + 120;
-        this.mindmap.contentEL.style.width = w + 'px';
-        this.mindmap.contentEL.style.height = h + 'px';
+        mindmap.contentEL.style.width = w + 'px';
+        mindmap.contentEL.style.height = h + 'px';
         setTimeout(() => {
-            domToImageMore.toPng(this.mindmap.contentEL, {}).then(dataUrl => {
+            if (this.mindmap !== mindmap)
+                return;
+            domToImageMore.toPng(mindmap.contentEL, {}).then(async (dataUrl) => {
+                if (this.mindmap !== mindmap)
+                    return;
                 var img = new Image();
                 img.src = dataUrl;
                 var str = img.outerHTML;
-                var p = this.mindmap.path.substr(0, this.mindmap.path.length - 2);
+                var p = path.substr(0, path.length - 2);
                 try {
                     new obsidian.Notice(p + 'html');
-                    this.app.vault.adapter.write(p + 'html', str);
-                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop);
+                    await this.app.vault.adapter.write(p + 'html', str);
+                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop, mindmap);
                 }
                 catch (err) {
-                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop);
-                    new obsidian.Notice(err);
+                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop, mindmap);
+                    new obsidian.Notice(String(err));
                 }
             }).catch(err => {
-                this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop);
-                new obsidian.Notice(err);
+                this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop, mindmap);
+                new obsidian.Notice(String(err));
             });
         }, 200);
     }
     exportToPng(i_scale) {
-        if (!this.mindmap) {
+        const mindmap = this.mindmap;
+        if (!mindmap || !mindmap.path) {
+            new obsidian.Notice('Cannot export a mindmap without an open file');
             return;
         }
-        const { rootBox, oldScrollLeft, oldScrollTop } = this.prepareForExport();
+        const path = mindmap.path;
+        const { rootBox, oldScrollLeft, oldScrollTop } = this.prepareForExport(mindmap);
         setTimeout(() => {
-            domToImageMore.toPng(this.mindmap.contentEL, { scale: i_scale }).then((dataUrl) => __awaiter(this, void 0, void 0, function* () {
+            if (this.mindmap !== mindmap)
+                return;
+            domToImageMore.toPng(mindmap.contentEL, { scale: i_scale }).then(async (dataUrl) => {
+                if (this.mindmap !== mindmap)
+                    return;
                 var img = new Image();
                 img.src = dataUrl;
-                const fileName = this.mindmap.path.replace(/\.md$/, '.png');
-                const arrayBuffer = yield this.dataURLtoBlob(dataUrl).arrayBuffer();
+                const fileName = path.replace(/\.md$/, '.png');
+                const arrayBuffer = await this.dataURLtoBlob(dataUrl).arrayBuffer();
+                if (this.mindmap !== mindmap)
+                    return;
                 this.app.vault.adapter.writeBinary(fileName, arrayBuffer)
                     .then(() => {
                     new obsidian.Notice(`Mindmap exported as PNG: ${fileName}`);
-                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop);
+                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop, mindmap);
                 })
                     .catch(err => {
                     console.error('Failed to save PNG file:', err);
                     new obsidian.Notice(`Failed to export mindmap as PNG: ${err}`);
-                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop);
+                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop, mindmap);
                 });
-            })).catch(err => {
-                this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop);
+            }).catch(err => {
+                this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop, mindmap);
                 new obsidian.Notice(`Failed to export mindmap as PNG: ${err}`);
             });
         }, 200);
     }
     exportToJpeg(i_scale) {
-        if (!this.mindmap) {
+        const mindmap = this.mindmap;
+        if (!mindmap || !mindmap.path) {
+            new obsidian.Notice('Cannot export a mindmap without an open file');
             return;
         }
-        const { rootBox, oldScrollLeft, oldScrollTop } = this.prepareForExport();
+        const path = mindmap.path;
+        const { rootBox, oldScrollLeft, oldScrollTop } = this.prepareForExport(mindmap);
         setTimeout(() => {
-            domToImageMore.toJpeg(this.mindmap.contentEL, { quality: 1.0, scale: i_scale }).then((dataUrl) => __awaiter(this, void 0, void 0, function* () {
+            if (this.mindmap !== mindmap)
+                return;
+            domToImageMore.toJpeg(mindmap.contentEL, { quality: 1.0, scale: i_scale }).then(async (dataUrl) => {
+                if (this.mindmap !== mindmap)
+                    return;
                 var img = new Image();
                 img.src = dataUrl;
-                const fileName = this.mindmap.path.replace(/\.md$/, '.jpeg');
-                const arrayBuffer = yield this.dataURLtoBlob(dataUrl).arrayBuffer();
+                const fileName = path.replace(/\.md$/, '.jpeg');
+                const arrayBuffer = await this.dataURLtoBlob(dataUrl).arrayBuffer();
+                if (this.mindmap !== mindmap)
+                    return;
                 this.app.vault.adapter.writeBinary(fileName, arrayBuffer)
                     .then(() => {
                     new obsidian.Notice(`Mindmap exported as JPEG: ${fileName}`);
-                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop);
+                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop, mindmap);
                 })
                     .catch(err => {
                     console.error('Failed to save JPEG file:', err);
                     new obsidian.Notice(`Failed to export mindmap as JPEG: ${err}`);
-                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop);
+                    this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop, mindmap);
                 });
-            })).catch(err => {
-                this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop);
+            }).catch(err => {
+                this.restoreMindmap(rootBox, oldScrollLeft, oldScrollTop, mindmap);
                 new obsidian.Notice(`Failed to export mindmap as JPEG: ${err}`);
             });
         }, 200);
     }
-    prepareForExport() {
-        if (!this.mindmap) {
-            return { rootBox: null, oldScrollLeft: 0, oldScrollTop: 0 };
-        }
+    prepareForExport(mindmap) {
         var nodes = [];
-        this.mindmap.traverseDF((n) => {
+        mindmap.traverseDF((n) => {
             if (n.isShow()) {
                 nodes.push(n);
             }
         });
-        var oldScrollLeft = this.mindmap.containerEL.scrollLeft;
-        var oldScrollTop = this.mindmap.containerEL.scrollTop;
-        var box = this.mindmap.getBoundingRect(nodes);
-        var rootBox = this.mindmap.root.getPosition();
+        var oldScrollLeft = mindmap.containerEL.scrollLeft;
+        var oldScrollTop = mindmap.containerEL.scrollTop;
+        var box = mindmap.getBoundingRect(nodes);
+        var rootBox = mindmap.root.getPosition();
         var disX = 0, disY = 0;
         if (box.x > 60) {
             disX = box.x - 60;
@@ -39052,16 +39215,16 @@ class MindMapView extends obsidian.TextFileView {
         if (box.y > 60) {
             disY = box.y - 60;
         }
-        this.mindmap.root.setPosition(rootBox.x - disX, rootBox.y - disY);
-        this.mindmap.refresh();
+        mindmap.root.setPosition(rootBox.x - disX, rootBox.y - disY);
+        mindmap.refresh();
         var w = box.width + 120;
         var h = box.height + 120;
-        this.mindmap.contentEL.style.width = w + 'px';
-        this.mindmap.contentEL.style.height = h + 'px';
+        mindmap.contentEL.style.width = w + 'px';
+        mindmap.contentEL.style.height = h + 'px';
         return { rootBox, oldScrollLeft, oldScrollTop };
     }
-    restoreMindmap(rootBox, left, top) {
-        if (!this.mindmap) {
+    restoreMindmap(rootBox, left, top, expected) {
+        if (!this.mindmap || this.mindmap !== expected) {
             return;
         }
         var size = this.plugin.settings.canvasSize;
@@ -39073,7 +39236,11 @@ class MindMapView extends obsidian.TextFileView {
         this.mindmap.refresh();
     }
     dataURLtoBlob(dataUrl) {
-        var arr = dataUrl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+        var arr = dataUrl.split(','), mimeMatch = arr[0].match(/:(.*?);/);
+        if (!mimeMatch || arr.length !== 2) {
+            throw new Error('Invalid image data URL');
+        }
+        var mime = mimeMatch[1], bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
         while (n--) {
             u8arr[n] = bstr.charCodeAt(n);
         }
@@ -39107,9 +39274,10 @@ class MindMapView extends obsidian.TextFileView {
         }
     }
     getFrontMatter() {
+        var _a;
         var frontMatter = '---\n\n';
         //  var v: any = '';
-        if (this.fileCache.frontmatter) {
+        if ((_a = this.fileCache) === null || _a === void 0 ? void 0 : _a.frontmatter) {
             // for (var k in this.fileCache.frontmatter) {
             //   if (k != 'position') {
             //     if (Object.prototype.toString.call(this.fileCache.frontmatter[k]) == '[object Array]' || Object.prototype.toString.call(this.fileCache.frontmatter[k]) == '[object Object]') {
@@ -39133,7 +39301,9 @@ class MindMapView extends obsidian.TextFileView {
     }
     constructor(leaf, plugin) {
         super(leaf);
+        this.hoverPopover = null;
         this.id = this.leaf.id;
+        this.mindmap = null;
         this.colors = [];
         this.timeOut = null;
         this.firstInit = true;
@@ -39146,16 +39316,14 @@ class MindMapView extends obsidian.TextFileView {
             }
         };
     }
-    onClose() {
-        return __awaiter(this, void 0, void 0, function* () {
-            // Remove draggables from render, as the DOM has already detached
-            //this.plugin.removeView(this);
-            if (this.mindmap) {
-                this.mindmap.clear();
-                this.contentEl.innerHTML = '';
-                this.mindmap = null;
-            }
-        });
+    async onClose() {
+        // Remove draggables from render, as the DOM has already detached
+        //this.plugin.removeView(this);
+        if (this.mindmap) {
+            this.mindmap.clear();
+            this.contentEl.innerHTML = '';
+            this.mindmap = null;
+        }
     }
     clear() {
     }
@@ -39183,28 +39351,33 @@ class MindMapView extends obsidian.TextFileView {
         // }
         this.mindmap = new MindMap(mindData, this.contentEl, this.plugin.settings);
         this.mindmap.colors = this.colors;
+        const mindmap = this.mindmap;
         if (this.firstInit) {
             setTimeout(() => {
+                if (this.mindmap !== mindmap)
+                    return;
                 var leaf = this.leaf;
                 if (leaf) {
                     var view = leaf.view;
-                    this.mindmap.path = view === null || view === void 0 ? void 0 : view.file.path;
                     if (view.file) {
+                        mindmap.path = view.file.path;
                         this.fileCache = this.app.metadataCache.getFileCache(view.file);
                         this.yamlString = this.getFrontMatter();
                     }
                 }
-                this.mindmap.init();
-                this.mindmap.refresh();
-                this.mindmap.view = this;
+                mindmap.init();
+                mindmap.refresh();
+                mindmap.view = this;
                 this.firstInit = false;
             }, 100);
         }
         else {
             var view = this.leaf.view;
-            this.fileCache = this.app.metadataCache.getFileCache(view.file);
-            this.yamlString = this.getFrontMatter();
-            this.mindmap.path = view === null || view === void 0 ? void 0 : view.file.path;
+            if (view.file) {
+                this.fileCache = this.app.metadataCache.getFileCache(view.file);
+                this.yamlString = this.getFrontMatter();
+                this.mindmap.path = view.file.path;
+            }
             this.mindmap.init();
             this.mindmap.refresh();
             this.mindmap.view = this;
@@ -39240,12 +39413,10 @@ class MindMapView extends obsidian.TextFileView {
             }
         }
     }
-    onFileMetadataChange(file) {
-        return __awaiter(this, void 0, void 0, function* () {
-            var path = file.path;
-            let md = yield this.app.vault.adapter.read(path);
-            this.onQuickPreview(file, md);
-        });
+    async onFileMetadataChange(file) {
+        var path = file.path;
+        let md = await this.app.vault.adapter.read(path);
+        this.onQuickPreview(file, md);
     }
     getMdText(str) {
         var md = str.trim().replace(FRONT_MATTER_REGEX, '');
@@ -39263,15 +39434,16 @@ class MindMapView extends obsidian.TextFileView {
             const regexResult = /^.+ \^([a-z0-9\-]+)$/gim.exec(mapData.v);
             const id = regexResult != null ? regexResult[1] : null;
             // console.log(id);
+            const children = [];
             var map = {
                 id: id || uuid(),
                 text: id ? mapData.v.replace(` ^${id}`, '') : mapData.v,
-                children: [],
+                children,
                 expanded: id ? false : true
             };
             if (flag && mapData.c && mapData.c.length) {
                 mapData.c.forEach((data) => {
-                    map.children.push(transformData(data));
+                    children.push(transformData(data));
                 });
             }
             return map;
@@ -39313,7 +39485,7 @@ class MindMapView extends obsidian.TextFileView {
         //       }
         //    })
         // })
-        super.onPaneMenu(menu, 'more-options');
+        super.onMoreOptionsMenu(menu);
     }
 }
 
@@ -39346,6 +39518,8 @@ class MindMapSettingsTab extends obsidian.PluginSettingTab {
             const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
             mindmapLeaves.forEach((leaf) => {
                 var v = leaf.view;
+                if (!(v instanceof MindMapView) || !v.mindmap)
+                    return;
                 v.mindmap.setting.canvasSize = _v;
                 v.mindmap.setAppSetting();
                 var box = v.mindmap.root.getBox();
@@ -39366,6 +39540,8 @@ class MindMapSettingsTab extends obsidian.PluginSettingTab {
             const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
             mindmapLeaves.forEach((leaf) => {
                 var v = leaf.view;
+                if (!(v instanceof MindMapView) || !v.mindmap)
+                    return;
                 v.mindmap.setting.background = this.plugin.settings.background;
                 v.mindmap.setAppSetting();
             });
@@ -39388,6 +39564,8 @@ class MindMapSettingsTab extends obsidian.PluginSettingTab {
             const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
             mindmapLeaves.forEach((leaf) => {
                 var v = leaf.view;
+                if (!(v instanceof MindMapView) || !v.mindmap)
+                    return;
                 v.mindmap.setting.headLevel = this.plugin.settings.headLevel;
             });
         }));
@@ -39405,6 +39583,8 @@ class MindMapSettingsTab extends obsidian.PluginSettingTab {
                 const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
                 mindmapLeaves.forEach((leaf) => {
                     var v = leaf.view;
+                    if (!(v instanceof MindMapView) || !v.mindmap)
+                        return;
                     v.mindmap.setting.fontSize = this.plugin.settings.fontSize;
                     v.mindmap.setAppSetting();
                     v.mindmap.traverseBF((n) => {
@@ -39430,6 +39610,8 @@ class MindMapSettingsTab extends obsidian.PluginSettingTab {
             const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
             mindmapLeaves.forEach((leaf) => {
                 var v = leaf.view;
+                if (!(v instanceof MindMapView) || !v.mindmap)
+                    return;
                 v.mindmap.setting.layoutDirect = this.plugin.settings.layoutDirect;
                 v.mindmap.refresh();
             });
@@ -39444,15 +39626,18 @@ class MindMapSettingsTab extends obsidian.PluginSettingTab {
                 .setPlaceholder('Example: red,orange,blue ...')
                 .onChange((value) => {
                 //this.plugin.settings.strokeArray = value
-                this.plugin.settings.strokeArray = value.split(',');
+                const colors = value.split(',');
+                this.plugin.settings.strokeArray = colors;
                 this.plugin.saveData(this.plugin.settings);
                 const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
                 mindmapLeaves.forEach((leaf) => {
                     var v = leaf.view;
+                    if (!(v instanceof MindMapView) || !v.mindmap)
+                        return;
                     //v.mindmap.setting.strokeArray = this.plugin.settings.strokeArray.split(',');
-                    v.mindmap.setting.strokeArray = this.plugin.settings.strokeArray;
+                    v.mindmap.setting.strokeArray = colors;
                     if (v.mindmap.mmLayout) {
-                        v.mindmap.mmLayout.colors = v.mindmap.setting.strokeArray;
+                        v.mindmap.mmLayout.colors = colors;
                     }
                     v.mindmap.traverseBF((n) => {
                         n.boundingRect = null;
@@ -39480,1099 +39665,1134 @@ class MindMapPlugin extends obsidian.Plugin {
         this._loaded = false;
         this.timeOut = null;
     }
-    onload() {
-        return __awaiter(this, void 0, void 0, function* () {
-            yield this.loadSettings();
-            this.addCommand({
-                id: 'Create New MindMap',
-                name: `${t('Create new mindmap')}`,
-                checkCallback: (checking) => {
-                    var _a;
-                    let leaf = this.app.workspace.activeLeaf;
-                    if (leaf) {
-                        if (!checking) {
-                            const targetFolder = this.app.fileManager.getNewFileParent(((_a = this.app.workspace.getActiveFile()) === null || _a === void 0 ? void 0 : _a.path) || "");
-                            if (targetFolder) {
-                                this.newMindMap(targetFolder);
-                            }
-                        }
-                        return true;
-                    }
-                    return false;
-                }
-            });
-            this.addCommand({
-                id: 'Toggle to markdown or mindmap',
-                name: `${t('Toggle markdown/mindmap')}`,
-                mobileOnly: false,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    const markdownView = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
-                    if (mindmapView != null) {
-                        this.mindmapFileModes[mindmapView.leaf.id || mindmapView.file.path] = 'markdown';
-                        this.setMarkdownView(mindmapView.leaf);
-                    }
-                    else if (markdownView != null) {
-                        this.mindmapFileModes[markdownView.leaf.id || markdownView.file.path] = mindmapViewType;
-                        this.setMarkdownView(markdownView.leaf);
-                    }
-                }
-            });
-            this.addCommand({
-                id: 'Set to mindmap view',
-                name: `${t('Set to mindmap mode')}`,
-                mobileOnly: false,
-                callback: () => {
-                    const markdownView = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
-                    if (markdownView != null) {
-                        this.mindmapFileModes[markdownView.leaf.id || markdownView.file.path] = mindmapViewType;
-                        this.setMarkdownView(markdownView.leaf);
-                    }
-                }
-            });
-            this.addCommand({
-                id: 'Set to markdown view',
-                name: `${t('Set to markdown mode')}`,
-                mobileOnly: false,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView != null) {
-                        this.mindmapFileModes[mindmapView.leaf.id || mindmapView.file.path] = 'markdown';
-                        this.setMarkdownView(mindmapView.leaf);
-                    }
-                }
-            });
-            // Alt + Shift + C
-            this.addCommand({
-                id: 'Copy Node',
-                name: `${t('Copy node')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'C',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        navigator.clipboard.writeText('');
-                        var node = mindmap.selectNode;
-                        if (node) {
-                            var text = mindmap.copyNode(node);
-                            navigator.clipboard.writeText(text);
+    async onload() {
+        await this.loadSettings();
+        this.addCommand({
+            id: 'Create New MindMap',
+            name: `${t('Create new mindmap')}`,
+            checkCallback: (checking) => {
+                var _a;
+                let leaf = this.app.workspace.activeLeaf;
+                if (leaf) {
+                    if (!checking) {
+                        const targetFolder = this.app.fileManager.getNewFileParent(((_a = this.app.workspace.getActiveFile()) === null || _a === void 0 ? void 0 : _a.path) || "");
+                        if (targetFolder) {
+                            this.newMindMap(targetFolder);
                         }
                     }
+                    return true;
                 }
-            });
-            // Alt + Shift + X
-            this.addCommand({
-                id: 'Cut Node',
-                name: `${t('Cut node')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'X',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        navigator.clipboard.writeText('');
-                        var node = mindmap.selectNode;
-                        if (node) {
-                            var text = mindmap.copyNode(node);
-                            navigator.clipboard.writeText(text);
-                            if (!node.data.isRoot && !node.data.isEdit) {
-                                node.mindmap.execute("deleteNodeAndChild", { node });
-                                mindmap._menuDom.style.display = 'none';
-                            }
-                        }
+                return false;
+            }
+        });
+        this.addCommand({
+            id: 'Toggle to markdown or mindmap',
+            name: `${t('Toggle markdown/mindmap')}`,
+            mobileOnly: false,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                const markdownView = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+                if (mindmapView != null) {
+                    this.mindmapFileModes[mindmapView.leaf.id || mindmapView.file.path] = 'markdown';
+                    this.setMarkdownView(mindmapView.leaf);
+                }
+                else if (markdownView != null) {
+                    this.mindmapFileModes[markdownView.leaf.id || markdownView.file.path] = mindmapViewType;
+                    this.setMarkdownView(markdownView.leaf);
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Set to mindmap view',
+            name: `${t('Set to mindmap mode')}`,
+            mobileOnly: false,
+            callback: () => {
+                const markdownView = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+                if (markdownView != null) {
+                    this.mindmapFileModes[markdownView.leaf.id || markdownView.file.path] = mindmapViewType;
+                    this.setMarkdownView(markdownView.leaf);
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Set to markdown view',
+            name: `${t('Set to markdown mode')}`,
+            mobileOnly: false,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView != null) {
+                    this.mindmapFileModes[mindmapView.leaf.id || mindmapView.file.path] = 'markdown';
+                    this.setMarkdownView(mindmapView.leaf);
+                }
+            }
+        });
+        // Alt + Shift + C
+        this.addCommand({
+            id: 'Copy Node',
+            name: `${t('Copy node')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'C',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    navigator.clipboard.writeText('');
+                    var node = mindmap.selectNode;
+                    if (node) {
+                        var text = mindmap.copyNode(node);
+                        navigator.clipboard.writeText(text);
                     }
                 }
-            });
-            // Alt + Shift + V
-            this.addCommand({
-                id: 'Paste Node',
-                name: `${t('Paste node')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'V',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        navigator.clipboard.readText().then(text => {
-                            mindmap.pasteNode(text);
-                            // Copy once more so that the node can be copied once more
-                            navigator.clipboard.writeText(text);
-                        });
-                    }
-                }
-            });
-            // Alt + Shift + Z
-            this.addCommand({
-                id: 'Undo',
-                name: `${t('Undo')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'Z',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        mindmap.undo();
-                    }
-                }
-            });
-            // Alt + Shift + Y
-            this.addCommand({
-                id: 'Redo',
-                name: `${t('Redo')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'Y',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        mindmap.redo();
-                    }
-                }
-            });
-            // Alt + Ctrl + Shift + Z
-            this.addCommand({
-                id: 'Replace by the previous text',
-                name: `${t('Replace by the previous text')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (node) {
-                            // var text = (node.data.oldText as string);
-                            var text = (node.data.oldText);
-                            node.setText(text);
-                            console.log(text + " / " + node.data.text);
-                        }
-                    }
-                }
-            });
-            // Shift + F2
-            this.addCommand({
-                id: 'Edit node',
-                name: `${t('Edit node')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Shift'],
-                        key: 'F2',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (node && !node.data.isEdit) {
-                            node.edit();
-                            mindmap._menuDom.style.display = 'none';
-                        }
-                    }
-                }
-            });
-            // Alt + Shift + Enter
-            this.addCommand({
-                id: 'Add sibling/end editing',
-                name: `${t('Add sibling/end editing')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'Enter',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (node) { // A node is selected
-                            if (!node.data.isEdit) { // Not editing a node => Add sibling node
-                                // if (!node.isExpand) {
-                                //   node.expand();
-                                // }
-                                if (!node.parent)
-                                    return;
-                                var newNode = node.mindmap.execute('addSiblingNode', {
-                                    parent: node.parent
-                                });
-                                mindmap._menuDom.style.display = 'none';
-                                // Move the new node under the previously selected one
-                                // Do not add this command to the history
-                                mindmap.moveNode(newNode, node, 'down', false);
-                            }
-                            else { // Editing mode => end edit mode
-                                //node.cancelEdit();
-                                mindmap.clearSelectNode();
-                                node.select();
-                                node.mindmap.editNode = null;
-                                //this.selectNode.unSelect();
-                            }
-                        }
-                    }
-                }
-            });
-            // Shift + Tab / Insert
-            this.addCommand({
-                id: 'Insert child',
-                name: `${t('Insert child')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Shift'],
-                        key: 'Insert',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (node) {
-                            if (!node.data.isEdit) { // Not editing
-                                if (!node.isExpand) {
-                                    node.expand();
-                                }
-                                node.mindmap.execute("addChildNode", { parent: node });
-                                mindmap._menuDom.style.display = 'none';
-                            }
-                            else {
-                                // mindmap.selectNode.unSelect();
-                                mindmap.clearSelectNode();
-                                node.select();
-                                node.mindmap.editNode = null;
-                            }
-                        }
-                        //else: no node selected -> nothing to do
-                    }
-                }
-            });
-            // Shift + Delete
-            this.addCommand({
-                id: 'Delete node & child',
-                name: `${t('Delete node & child')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Shift'],
-                        key: 'Delete',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (node && !node.data.isRoot && !node.data.isEdit) {
+            }
+        });
+        // Alt + Shift + X
+        this.addCommand({
+            id: 'Cut Node',
+            name: `${t('Cut node')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'X',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    navigator.clipboard.writeText('');
+                    var node = mindmap.selectNode;
+                    if (node) {
+                        var text = mindmap.copyNode(node);
+                        navigator.clipboard.writeText(text);
+                        if (!node.data.isRoot && !node.data.isEdit) {
                             node.mindmap.execute("deleteNodeAndChild", { node });
                             mindmap._menuDom.style.display = 'none';
                         }
-                        //else: Deletion makes no sense
                     }
                 }
-            });
-            // Alt + Shift + S
-            this.addCommand({
-                id: 'Select the node\'s text',
-                name: `${t('Select the node\'s text')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        let node = mindmap.selectNode;
-                        if (node) {
-                            node.edit();
-                            node.selectText();
-                        }
-                        //else: no node selected
+            }
+        });
+        // Alt + Shift + V
+        this.addCommand({
+            id: 'Paste Node',
+            name: `${t('Paste node')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'V',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    navigator.clipboard.readText().then(text => {
+                        mindmap.pasteNode(text);
+                        // Copy once more so that the node can be copied once more
+                        navigator.clipboard.writeText(text);
+                    });
+                }
+            }
+        });
+        // Alt + Shift + Z
+        this.addCommand({
+            id: 'Undo',
+            name: `${t('Undo')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'Z',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    mindmap.undo();
+                }
+            }
+        });
+        // Alt + Shift + Y
+        this.addCommand({
+            id: 'Redo',
+            name: `${t('Redo')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'Y',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    mindmap.redo();
+                }
+            }
+        });
+        // Alt + Ctrl + Shift + Z
+        this.addCommand({
+            id: 'Replace by the previous text',
+            name: `${t('Replace by the previous text')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node) {
+                        // var text = (node.data.oldText as string);
+                        var text = (node.data.oldText);
+                        node.setText(text);
+                        console.log(text + " / " + node.data.text);
                     }
                 }
-            });
-            // Alt + Shift + B
-            this.addCommand({
-                id: 'Bold the node\'s text',
-                name: `${t('Bold the node\'s text')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'B',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        if (mindmap.selectNode) {
-                            var l_prefix_1 = "**"; // Applied prefix
-                            var l_prefix_2 = "__"; // Alternate prefix to look for
-                            var node = mindmap.selectNode;
-                            if (node.data.isEdit) { // A node is edited: set in bold only the selected part
-                                var l_check_prefix = true;
-                                var l_set_as_suffix = true;
-                                node.setSelectedText(l_prefix_1, l_prefix_2, l_check_prefix, l_set_as_suffix, true);
-                            }
-                            else { // Set in bold the whole node
-                                mindmap._formatNode(node, l_prefix_1, l_prefix_2);
-                            }
-                            mindmap.refresh();
-                            mindmap.scale(mindmap.mindScale);
-                        }
-                        //else: no node selected: nothing to do
+            }
+        });
+        // Shift + F2
+        this.addCommand({
+            id: 'Edit node',
+            name: `${t('Edit node')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Shift'],
+                    key: 'F2',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node && !node.data.isEdit) {
+                        node.edit();
+                        mindmap._menuDom.style.display = 'none';
                     }
                 }
-            });
-            // Alt + Shift + I
-            this.addCommand({
-                id: 'Italicize the node\'s text',
-                name: `${t('Italicize the node\'s text')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'I',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        if (mindmap.selectNode) {
-                            var node = mindmap.selectNode;
-                            if (node.data.isEdit) { // A node is edited: set in italics only the selected part
-                                node.setSelectedText_italic();
-                            }
-                            else { // Set in italics the whole node
-                                var text = node.data.text;
-                                if ((((text.substring(0, 1) == "*") ||
-                                    (text.substring(0, 1) == "_")) &&
-                                    (text.substring(0, 2) != "**") &&
-                                    (text.substring(0, 2) != "__")) ||
-                                    (text.substring(0, 3) == "***") ||
-                                    (text.substring(0, 3) == "_**") ||
-                                    (text.substring(0, 3) == "__*") ||
-                                    (text.substring(0, 3) == "___") ||
-                                    (text.substring(0, 3) == "**_") ||
-                                    (text.substring(0, 3) == "*__")) { // Already italic
-                                    if (text.slice(0, 3).includes("_")) {
-                                        // Replace only the first "_" in the first 3 chars (that make the italic)
-                                        text = text.slice(0, 3).replace('_', '') + text.slice(3);
-                                        // Replace only the first "_" in the LAST 3 chars (that make the italic)
-                                        text = text.slice(0, -3) + text.slice(-3).replace('_', '');
-                                    }
-                                    else { // A "*" is making the italic
-                                        text = text.slice(0, 3).replace('*', '') + text.slice(3);
-                                        text = text.slice(0, -3) + text.slice(-3).replace('*', '');
-                                    }
-                                }
-                                else { // Not in italic
-                                    text = "_" + text + "_";
-                                    // Used to use "*" to allow bold/italic change in whatever order
-                                    // However "***" is not displayed as bold + italic, so use _ for italic and * for bold
-                                }
-                                // Set node text
-                                node.mindmap.execute('changeNodeText', {
-                                    node: node,
-                                    text: text,
-                                    oldText: node.data.text
-                                });
-                                // node.data.oldText = node.data.text;
-                                // node.setText(text);
-                            }
-                            mindmap.refresh();
-                            mindmap.scale(mindmap.mindScale);
-                        }
-                        //else: no node selected: nothing to do
-                    }
-                }
-            });
-            // Alt + Shift + H
-            this.addCommand({
-                id: 'Highlight the node\'s text',
-                name: `${t('Highlight the node\'s text')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'H',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        if (mindmap.selectNode) { // There is a node selected: format
-                            var l_prefix_1 = "==";
-                            var l_prefix_2 = l_prefix_1;
-                            var node = mindmap.selectNode;
-                            if (node.data.isEdit) { // A node is edited: set in bold only the selected part
-                                var l_check_prefix = true;
-                                var l_set_as_suffix = true;
-                                node.setSelectedText(l_prefix_1, l_prefix_2, l_check_prefix, l_set_as_suffix, true);
-                            }
-                            else { // Set in bold the whole node
-                                mindmap._formatNode(node, l_prefix_1, l_prefix_2);
+            }
+        });
+        // Alt + Shift + Enter
+        this.addCommand({
+            id: 'Add sibling/end editing',
+            name: `${t('Add sibling/end editing')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'Enter',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node) { // A node is selected
+                        if (!node.data.isEdit) { // Not editing a node => Add sibling node
+                            // if (!node.isExpand) {
+                            //   node.expand();
+                            // }
+                            if (!node.parent)
+                                return;
+                            var newNode = node.mindmap.execute('addSiblingNode', {
+                                parent: node.parent
+                            });
+                            mindmap._menuDom.style.display = 'none';
+                            // Move the new node under the previously selected one
+                            // Do not add this command to the history
+                            if (newNode) {
+                                mindmap.moveNode(newNode, node, 'down', false);
                             }
                         }
-                    }
-                    //else: no node selected: nothing to do
-                }
-            });
-            // Alt + Shift + 2
-            this.addCommand({
-                id: 'Strike through the node\'s text',
-                name: `${t('Strike through the node\'s text')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        if (mindmap.selectNode) { // There is a node selected: format
-                            var l_prefix_1 = "~~";
-                            var l_prefix_2 = l_prefix_1;
-                            var node = mindmap.selectNode;
-                            if (node.data.isEdit) { // A node is edited: set in bold only the selected part
-                                var l_check_prefix = true;
-                                var l_set_as_suffix = true;
-                                node.setSelectedText(l_prefix_1, l_prefix_2, l_check_prefix, l_set_as_suffix, true);
-                            }
-                            else { // Set in bold the whole node
-                                mindmap._formatNode(node, l_prefix_1, l_prefix_2);
-                            }
-                        }
-                        //else: no node selected: nothing to do
-                    }
-                }
-            });
-            // Alt + Shift + T
-            this.addCommand({
-                id: 'Add tabulation',
-                name: `${t('Add tabulation')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 't',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        let node = mindmap.selectNode;
-                        if (node) {
-                            if (node.data.isEdit) ;
-                            node.insertText('    ');
-                        }
-                        //else: no node selected
-                    }
-                }
-            });
-            // Alt + Ctrl + Shift + L
-            this.addCommand({
-                id: 'Add line break (<br>)',
-                name: `${t('Add line break (<br>)')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Ctrl', 'Shift'],
-                        key: 'l',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        let node = mindmap.selectNode;
-                        if (node) {
-                            if (node.data.isEdit) ;
-                            node.setSelectedText('<br>', '<br>', false, false, false);
-                        }
-                        //else: no node selected
-                    }
-                }
-            });
-            // Alt + Shift + L
-            this.addCommand({
-                id: 'Remove line breaks (<br>)',
-                name: `${t('Remove line breaks (<br>)')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'l',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        let node = mindmap.selectNode;
-                        if (node) {
-                            node.removeLineBreak();
-                        }
-                        //else: no node selected
-                    }
-                }
-            });
-            // (Shift +) Escape
-            this.addCommand({
-                id: 'Cancel edit',
-                name: `${t('Cancel edit')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (node && node.data.isEdit) {
+                        else { // Editing mode => end edit mode
+                            //node.cancelEdit();
+                            mindmap.clearSelectNode();
                             node.select();
-                            node.mindmap.editNode = null;
-                            node.cancelEdit();
-                            mindmap.undo();
+                            node.mindmap.editNode = undefined;
                             //this.selectNode.unSelect();
                         }
                     }
                 }
-            });
-            // Alt + Dn
-            this.addCommand({
-                id: 'Expand one level',
-                name: `${t('Expand one level')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt'],
-                        key: 'ArrowDown',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        if (mindmap.selectNode) {
-                            mindmap.setDisplayedLevel(mindmap.selectNode.getLevel() + 1);
-                            mindmap.refresh();
-                            mindmap._selectNode(mindmap.selectNode, "right");
-                        }
-                    }
-                }
-            });
-            // Alt + PgDn
-            this.addCommand({
-                id: 'Expand one level from the max. displayed level',
-                name: `${t('Expand one level from the max. displayed level')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt'],
-                        key: 'PageDown',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (node) { // Expand
-                            mindmap.setChildrenDisplayedLevel(mindmap.getMaxNodeDisplayedLevel(node) + 1);
-                            mindmap.refresh();
-                            //mindmap.scale(mindmap.mindScale);
-                            mindmap.selectNode.select();
-                        }
-                    }
-                }
-            });
-            // Alt + Up
-            this.addCommand({
-                id: 'Collapse one level',
-                name: `${t('Collapse one level')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt'],
-                        key: 'ArrowUp',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        if (mindmap.selectNode) {
-                            mindmap.setDisplayedLevel(mindmap.selectNode.getLevel() - 1);
-                            mindmap.refresh();
-                            mindmap.selectNode.parent.select();
-                        }
-                    }
-                }
-            });
-            // Alt + PgUp:
-            this.addCommand({
-                id: 'Collapse one level from the max. displayed level',
-                name: `${t('Collapse one level from the max. displayed level')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt'],
-                        key: 'PageUp',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if ((node) &&
-                            (mindmap.getMaxNodeDisplayedLevel(node) > node.getLevel())) { // Collapse only if current selected node would not be hidden
-                            mindmap.setChildrenDisplayedLevel(mindmap.getMaxNodeDisplayedLevel(node) - 1);
-                            mindmap.refresh();
-                            mindmap.scale(mindmap.mindScale);
-                            mindmap.selectNode.select();
-                        }
-                    }
-                }
-            });
-            // Ctrl + Shift + Space
-            this.addCommand({
-                id: 'Toggle expand/collapse node',
-                name: `${t('Toggle expand/collapse node')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Mod', 'Shift'],
-                        key: 'Space',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (node) {
-                            mindmap._toggleExpandNode(node);
-                        }
-                    }
-                }
-            });
-            // Alt + Shift + Up
-            this.addCommand({
-                id: 'Move the current node above',
-                name: `${t('Move the current node above')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'ArrowUp',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (!node) { // No node selected: select root node
-                            mindmap.root.select();
-                            node = mindmap.selectNode;
-                        }
-                        else if ((!node.data.isEdit) &&
-                            (!node.data.isRoot)) { // The node can be moved
-                            var type = 'top';
-                            if (node.getIndex() == 0) { // First sibling: move BELOW "previous" (=last) node
-                                type = 'down';
+            }
+        });
+        // Shift + Tab / Insert
+        this.addCommand({
+            id: 'Insert child',
+            name: `${t('Insert child')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Shift'],
+                    key: 'Insert',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node) {
+                        if (!node.data.isEdit) { // Not editing
+                            if (!node.isExpand) {
+                                node.expand();
                             }
-                            //else: no special treatment
-                            mindmap.moveNode(node, node.getPreviousSibling(), type);
-                        }
-                        if ((this.settings.focusOnMove == true)) {
-                            mindmap.centerOnNode(mindmap.selectNode);
-                        }
-                    }
-                }
-            });
-            // Alt + Shift + Down
-            this.addCommand({
-                id: 'Move the current node below',
-                name: `${t('Move the current node below')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'ArrowDown',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (!node) { // No node selected: select root node
-                            mindmap.root.select();
-                            node = mindmap.selectNode;
-                        }
-                        else if ((!node.data.isEdit) &&
-                            (!node.data.isRoot)) { // The node can be moved
-                            var type = 'down';
-                            if (node.getIndex() == node.parent.children.length - 1) { // Last sibling: move ABOVE "next" (=first) node
-                                type = 'top';
-                            }
-                            //else: no special treatment
-                            mindmap.moveNode(node, node.getNextSibling(), type);
-                        }
-                        if ((this.settings.focusOnMove == true)) {
-                            mindmap.centerOnNode(mindmap.selectNode);
-                        }
-                    }
-                }
-            });
-            // Alt + Shift + Left
-            this.addCommand({
-                id: 'Move the current node left',
-                name: `${t('Move the current node left')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'ArrowLeft',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (!node) { // No node selected: select root node
-                            mindmap.root.select();
-                            node = mindmap.selectNode;
-                        }
-                        else { // Move current node as parent/child depending on the position
-                            var rootPos = mindmap.root.getPosition();
-                            var nodePos = node.getPosition();
-                            if (rootPos.x < nodePos.x) {
-                                mindmap._moveAsParent(node);
-                            }
-                            else {
-                                mindmap._moveAsChild(node, node.getPreviousSibling());
-                            }
-                        }
-                        if ((this.settings.focusOnMove == true)) {
-                            mindmap.centerOnNode(mindmap.selectNode);
-                        }
-                    }
-                }
-            });
-            // Alt + Shift + Right
-            this.addCommand({
-                id: 'Move the current node right',
-                name: `${t('Move the current node right')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'ArrowRight',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (!node) { // No node selected
-                            mindmap.root.select();
-                            node = mindmap.selectNode;
+                            node.mindmap.execute("addChildNode", { parent: node });
+                            mindmap._menuDom.style.display = 'none';
                         }
                         else {
-                            var rootPos = mindmap.root.getPosition();
-                            var nodePos = node.getPosition();
-                            if (rootPos.x < nodePos.x) {
-                                // mindmap.selectedNodes.forEach((n:INode) => {
-                                //     mindmap._moveAsChild(n);
-                                // });
-                                mindmap._moveAsChild(node, node.getPreviousSibling());
+                            // mindmap.selectNode.unSelect();
+                            mindmap.clearSelectNode();
+                            node.select();
+                            node.mindmap.editNode = undefined;
+                        }
+                    }
+                    //else: no node selected -> nothing to do
+                }
+            }
+        });
+        // Shift + Delete
+        this.addCommand({
+            id: 'Delete node & child',
+            name: `${t('Delete node & child')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Shift'],
+                    key: 'Delete',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node && !node.data.isRoot && !node.data.isEdit) {
+                        node.mindmap.execute("deleteNodeAndChild", { node });
+                        mindmap._menuDom.style.display = 'none';
+                    }
+                    //else: Deletion makes no sense
+                }
+            }
+        });
+        // Alt + Shift + S
+        this.addCommand({
+            id: 'Select the node\'s text',
+            name: `${t('Select the node\'s text')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    let node = mindmap.selectNode;
+                    if (node) {
+                        node.edit();
+                        node.selectText();
+                    }
+                    //else: no node selected
+                }
+            }
+        });
+        // Alt + Shift + B
+        this.addCommand({
+            id: 'Bold the node\'s text',
+            name: `${t('Bold the node\'s text')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'B',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    if (mindmap.selectNode) {
+                        var l_prefix_1 = "**"; // Applied prefix
+                        var l_prefix_2 = "__"; // Alternate prefix to look for
+                        var node = mindmap.selectNode;
+                        if (node.data.isEdit) { // A node is edited: set in bold only the selected part
+                            var l_check_prefix = true;
+                            var l_set_as_suffix = true;
+                            node.setSelectedText(l_prefix_1, l_prefix_2, "", l_check_prefix, l_set_as_suffix, true);
+                        }
+                        else { // Set in bold the whole node
+                            mindmap._formatNode(node, l_prefix_1, l_prefix_2);
+                        }
+                        mindmap.refresh();
+                        mindmap.scale(mindmap.mindScale);
+                    }
+                    //else: no node selected: nothing to do
+                }
+            }
+        });
+        // Alt + Shift + I
+        this.addCommand({
+            id: 'Italicize the node\'s text',
+            name: `${t('Italicize the node\'s text')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'I',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    if (mindmap.selectNode) {
+                        var node = mindmap.selectNode;
+                        if (node.data.isEdit) { // A node is edited: set in italics only the selected part
+                            node.setSelectedText_italic();
+                        }
+                        else { // Set in italics the whole node
+                            var text = node.data.text;
+                            if ((((text.substring(0, 1) == "*") ||
+                                (text.substring(0, 1) == "_")) &&
+                                (text.substring(0, 2) != "**") &&
+                                (text.substring(0, 2) != "__")) ||
+                                (text.substring(0, 3) == "***") ||
+                                (text.substring(0, 3) == "_**") ||
+                                (text.substring(0, 3) == "__*") ||
+                                (text.substring(0, 3) == "___") ||
+                                (text.substring(0, 3) == "**_") ||
+                                (text.substring(0, 3) == "*__")) { // Already italic
+                                if (text.slice(0, 3).includes("_")) {
+                                    // Replace only the first "_" in the first 3 chars (that make the italic)
+                                    text = text.slice(0, 3).replace('_', '') + text.slice(3);
+                                    // Replace only the first "_" in the LAST 3 chars (that make the italic)
+                                    text = text.slice(0, -3) + text.slice(-3).replace('_', '');
+                                }
+                                else { // A "*" is making the italic
+                                    text = text.slice(0, 3).replace('*', '') + text.slice(3);
+                                    text = text.slice(0, -3) + text.slice(-3).replace('*', '');
+                                }
                             }
-                            else {
-                                mindmap._moveAsParent(node);
+                            else { // Not in italic
+                                text = "_" + text + "_";
+                                // Used to use "*" to allow bold/italic change in whatever order
+                                // However "***" is not displayed as bold + italic, so use _ for italic and * for bold
                             }
+                            // Set node text
+                            node.mindmap.execute('changeNodeText', {
+                                node: node,
+                                text: text,
+                                oldText: node.data.text
+                            });
+                            // node.data.oldText = node.data.text;
+                            // node.setText(text);
                         }
-                        if ((this.settings.focusOnMove == true)) {
-                            mindmap.centerOnNode(mindmap.selectNode);
-                        }
+                        mindmap.refresh();
+                        mindmap.scale(mindmap.mindScale);
                     }
+                    //else: no node selected: nothing to do
                 }
-            });
-            // Alt + Shift + D
-            this.addCommand({
-                id: 'Move next siblings as children',
-                name: `${t('Move next siblings as children')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'D',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
+            }
+        });
+        // Alt + Shift + H
+        this.addCommand({
+            id: 'Highlight the node\'s text',
+            name: `${t('Highlight the node\'s text')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'H',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    if (mindmap.selectNode) { // There is a node selected: format
+                        var l_prefix_1 = "==";
+                        var l_prefix_2 = l_prefix_1;
                         var node = mindmap.selectNode;
-                        if (node) {
-                            mindmap.moveNextSiblingsAsChildren(node);
+                        if (node.data.isEdit) { // A node is edited: set in bold only the selected part
+                            var l_check_prefix = true;
+                            var l_set_as_suffix = true;
+                            node.setSelectedText(l_prefix_1, l_prefix_2, "", l_check_prefix, l_set_as_suffix, true);
                         }
-                        // else: No node selected: nothing to do
+                        else { // Set in bold the whole node
+                            mindmap._formatNode(node, l_prefix_1, l_prefix_2);
+                        }
                     }
                 }
-            });
-            this.addCommand({
-                id: 'Move all siblings as children',
-                name: `${t('Move all siblings as children')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Ctrl', 'Shift'],
-                        key: 'D',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
+                //else: no node selected: nothing to do
+            }
+        });
+        // Alt + Shift + 2
+        this.addCommand({
+            id: 'Strike through the node\'s text',
+            name: `${t('Strike through the node\'s text')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: '2',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    if (mindmap.selectNode) { // There is a node selected: format
+                        var l_prefix_1 = "~~";
+                        var l_prefix_2 = l_prefix_1;
                         var node = mindmap.selectNode;
-                        if (node) {
-                            mindmap.moveAllSiblingsAsChildren(node);
+                        if (node.data.isEdit) { // A node is edited: set in bold only the selected part
+                            var l_check_prefix = true;
+                            var l_set_as_suffix = true;
+                            node.setSelectedText(l_prefix_1, l_prefix_2, "", l_check_prefix, l_set_as_suffix, true);
                         }
-                        // else: No node selected: nothing to do
+                        else { // Set in bold the whole node
+                            mindmap._formatNode(node, l_prefix_1, l_prefix_2);
+                        }
                     }
+                    //else: no node selected: nothing to do
                 }
-            });
-            // Alt + Shift + J
-            this.addCommand({
-                id: 'Join with the node below',
-                name: `${t('Join with the node below')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift'],
-                        key: 'J',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
+            }
+        });
+        // Alt + Shift + G
+        this.addCommand({
+            id: 'Set the node\'s text in gray',
+            name: `${t('Set the node\'s text in gray')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'g',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    if (mindmap.selectNode) { // There is a node selected: format
+                        var l_prefix_1 = "~={grey}";
+                        var l_prefix_2 = l_prefix_1;
+                        var l_suffix = "=~";
                         var node = mindmap.selectNode;
-                        if (node) {
-                            mindmap.joinWithFollowingNode(node, false);
+                        if (node.data.isEdit) { // A node is edited: set in grey only the selected part
+                            var l_check_prefix = true;
+                            var l_set_as_suffix = true;
+                            node.setSelectedText(l_prefix_1, l_prefix_2, l_suffix, l_check_prefix, l_set_as_suffix, true);
                         }
-                        // else: No node selected: nothing to do
+                        else { // Set in grey the whole node
+                            mindmap._formatNode(node, l_prefix_1, l_prefix_2, l_suffix);
+                        }
+                    }
+                    //else: no node selected: nothing to do
+                }
+            }
+        });
+        // Alt + Shift + T
+        this.addCommand({
+            id: 'Add tabulation',
+            name: `${t('Add tabulation')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 't',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    let node = mindmap.selectNode;
+                    if (node) {
+                        if (node.data.isEdit) { // A node is edited:
+                            node.insertText('    ');
+                        }
+                    }
+                    //else: no node selected
+                }
+            }
+        });
+        // Alt + Ctrl + Shift + L
+        this.addCommand({
+            id: 'Add line break (<br>)',
+            name: `${t('Add line break (<br>)')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Ctrl', 'Shift'],
+                    key: 'l',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    let node = mindmap.selectNode;
+                    if (node) {
+                        if (node.data.isEdit) { // A node is edited:
+                            node.setSelectedText('<br>', '<br>', "", false, false, false);
+                        }
+                    }
+                    //else: no node selected
+                }
+            }
+        });
+        // Alt + Shift + L
+        this.addCommand({
+            id: 'Remove line breaks (<br>)',
+            name: `${t('Remove line breaks (<br>)')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'l',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    let node = mindmap.selectNode;
+                    if (node) {
+                        if (!node.data.isEdit) {
+                            node.removeLineBreak();
+                        }
+                        // else: do not remove as there are often confusions with add line break
+                    }
+                    //else: no node selected
+                }
+            }
+        });
+        // (Shift +) Escape
+        this.addCommand({
+            id: 'Cancel edit',
+            name: `${t('Cancel edit')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node && node.data.isEdit) {
+                        node.select();
+                        node.mindmap.editNode = undefined;
+                        node.cancelEdit();
+                        mindmap.undo();
+                        //this.selectNode.unSelect();
                     }
                 }
-            });
-            // Alt + Shift + Ctrl + J
-            this.addCommand({
-                id: 'Join as citation with the node below',
-                name: `${t('Join as citation with the node below')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt', 'Shift', 'Ctrl'],
-                        key: 'J',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (node) {
-                            mindmap.joinWithFollowingNode(node, true);
-                        }
-                        // else: No node selected: nothing to do
+            }
+        });
+        // Alt + Dn
+        this.addCommand({
+            id: 'Expand one level',
+            name: `${t('Expand one level')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt'],
+                    key: 'ArrowDown',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    if (mindmap.selectNode) {
+                        mindmap.setDisplayedLevel(mindmap.selectNode.getLevel() + 1);
+                        mindmap.refresh();
+                        mindmap._selectNode(mindmap.selectNode, "right");
                     }
                 }
-            });
-            // Alt + E
-            this.addCommand({
-                id: 'Center mindmap view on the current node',
-                name: `${t('Center mindmap view on the current node')}`,
-                hotkeys: [
-                    {
-                        modifiers: ['Alt'],
-                        key: 'E',
-                    },
-                ],
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
+            }
+        });
+        // Alt + PgDn
+        this.addCommand({
+            id: 'Expand one level from the max. displayed level',
+            name: `${t('Expand one level from the max. displayed level')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt'],
+                    key: 'PageDown',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node) { // Expand
+                        mindmap.setChildrenDisplayedLevel(mindmap.getMaxNodeDisplayedLevel(node) + 1);
+                        mindmap.refresh();
+                        //mindmap.scale(mindmap.mindScale);
+                        node.select();
+                    }
+                }
+            }
+        });
+        // Alt + Up
+        this.addCommand({
+            id: 'Collapse one level',
+            name: `${t('Collapse one level')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt'],
+                    key: 'ArrowUp',
+                },
+            ],
+            callback: () => {
+                var _a;
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    if (mindmap.selectNode) {
+                        mindmap.setDisplayedLevel(mindmap.selectNode.getLevel() - 1);
+                        mindmap.refresh();
+                        (_a = mindmap.selectNode.parent) === null || _a === void 0 ? void 0 : _a.select();
+                    }
+                }
+            }
+        });
+        // Alt + PgUp:
+        this.addCommand({
+            id: 'Collapse one level from the max. displayed level',
+            name: `${t('Collapse one level from the max. displayed level')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt'],
+                    key: 'PageUp',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if ((node) &&
+                        (mindmap.getMaxNodeDisplayedLevel(node) > node.getLevel())) { // Collapse only if current selected node would not be hidden
+                        mindmap.setChildrenDisplayedLevel(mindmap.getMaxNodeDisplayedLevel(node) - 1);
+                        mindmap.refresh();
+                        mindmap.scale(mindmap.mindScale);
+                        node.select();
+                    }
+                }
+            }
+        });
+        // Ctrl + Shift + Space
+        this.addCommand({
+            id: 'Toggle expand/collapse node',
+            name: `${t('Toggle expand/collapse node')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Mod', 'Shift'],
+                    key: 'Space',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node) {
+                        mindmap._toggleExpandNode(node);
+                    }
+                }
+            }
+        });
+        // Alt + Shift + Up
+        this.addCommand({
+            id: 'Move the current node above',
+            name: `${t('Move the current node above')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'ArrowUp',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (!node) { // No node selected: select root node
+                        mindmap.root.select();
+                        node = mindmap.selectNode;
+                    }
+                    else if ((!node.data.isEdit) &&
+                        (!node.data.isRoot)) { // The node can be moved
+                        var type = 'top';
+                        if (node.getIndex() == 0) { // First sibling: move BELOW "previous" (=last) node
+                            type = 'down';
+                        }
+                        //else: no special treatment
+                        mindmap.moveNode(node, node.getPreviousSibling(), type);
+                    }
+                    if ((this.settings.focusOnMove == true)) {
                         mindmap.centerOnNode(mindmap.selectNode);
                     }
                 }
-            });
-            // Alt + Shift + E
-            this.addCommand({
-                id: 'Center mindmap view',
-                name: `${t('Center mindmap view')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        mindmap.center();
+            }
+        });
+        // Alt + Shift + Down
+        this.addCommand({
+            id: 'Move the current node below',
+            name: `${t('Move the current node below')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'ArrowDown',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (!node) { // No node selected: select root node
+                        mindmap.root.select();
+                        node = mindmap.selectNode;
+                    }
+                    else if ((!node.data.isEdit) &&
+                        (!node.data.isRoot)) { // The node can be moved
+                        var type = 'down';
+                        if (node.parent && node.getIndex() == node.parent.children.length - 1) { // Last sibling: move ABOVE "next" (=first) node
+                            type = 'top';
+                        }
+                        //else: no special treatment
+                        mindmap.moveNode(node, node.getNextSibling(), type);
+                    }
+                    if ((this.settings.focusOnMove == true)) {
+                        mindmap.centerOnNode(mindmap.selectNode);
                     }
                 }
-            });
-            this.addCommand({
-                id: 'Display the node\'s info in console',
-                name: `${t('Display the node\'s info in console')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        var mindmap = mindmapView.mindmap;
-                        var node = mindmap.selectNode;
-                        if (node) {
-                            console.log("Node idx: " + node.getIndex());
-                            console.log("Previous node idx: " + node.getPreviousSibling().getIndex());
-                            console.log("Next node idx: " + node.getNextSibling().getIndex());
-                            console.log("Node pos: x=" + node.getPosition().x + " / y=" + node.getPosition().y);
-                            console.log("Node dim: x=" + node.getDimensions().x + " / y=" + node.getDimensions().y);
-                            console.log("Canvas: " + mindmap.setting.canvasSize);
-                            console.log("Disp scroll: x=" + mindmap.containerEL.scrollLeft + " / y=" + mindmap.containerEL.scrollTop);
-                            console.log("Disp client: x=" + mindmap.containerEL.clientWidth + " / y=" + mindmap.containerEL.clientHeight);
-                            //node.setText
+            }
+        });
+        // Alt + Shift + Left
+        this.addCommand({
+            id: 'Move the current node left',
+            name: `${t('Move the current node left')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'ArrowLeft',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (!node) { // No node selected: select root node
+                        mindmap.root.select();
+                        node = mindmap.selectNode;
+                    }
+                    else { // Move current node as parent/child depending on the position
+                        var rootPos = mindmap.root.getPosition();
+                        var nodePos = node.getPosition();
+                        if (rootPos.x < nodePos.x) {
+                            mindmap._moveAsParent(node);
+                        }
+                        else {
+                            mindmap._moveAsChild(node, node.getPreviousSibling());
                         }
                     }
-                }
-            });
-            this.addCommand({
-                id: 'Export to html',
-                name: `${t('Export to html')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        mindmapView.exportToSvg();
+                    if ((this.settings.focusOnMove == true)) {
+                        mindmap.centerOnNode(mindmap.selectNode);
                     }
                 }
-            });
-            this.addCommand({
-                id: 'Export to JPEG (LQ)',
-                name: `${t('Export to JPEG (LQ)')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        mindmapView.exportToJpeg(1);
-                    }
-                }
-            });
-            this.addCommand({
-                id: 'Export to PNG (LQ)',
-                name: `${t('Export to PNG (LQ)')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        mindmapView.exportToPng(1);
-                    }
-                }
-            });
-            this.addCommand({
-                id: 'Export to JPEG',
-                name: `${t('Export to JPEG')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        mindmapView.exportToJpeg(2);
-                    }
-                }
-            });
-            this.addCommand({
-                id: 'Export to PNG',
-                name: `${t('Export to PNG')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        mindmapView.exportToPng(2);
-                    }
-                }
-            });
-            this.addCommand({
-                id: 'Export to JPEG (HQ)',
-                name: `${t('Export to JPEG (HQ)')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        mindmapView.exportToJpeg(4);
-                    }
-                }
-            });
-            this.addCommand({
-                id: 'Export to PNG (HQ)',
-                name: `${t('Export to PNG (HQ)')}`,
-                callback: () => {
-                    const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-                    if (mindmapView) {
-                        mindmapView.exportToPng(4);
-                    }
-                }
-            });
-            this.registerView(mindmapViewType, (leaf) => new MindMapView(leaf, this));
-            this.registerEvents();
-            this.registerMonkeyAround();
-            this.addSettingTab(new MindMapSettingsTab(this.app, this));
+            }
         });
+        // Alt + Shift + Right
+        this.addCommand({
+            id: 'Move the current node right',
+            name: `${t('Move the current node right')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'ArrowRight',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (!node) { // No node selected
+                        mindmap.root.select();
+                        node = mindmap.selectNode;
+                    }
+                    else {
+                        var rootPos = mindmap.root.getPosition();
+                        var nodePos = node.getPosition();
+                        if (rootPos.x < nodePos.x) {
+                            // mindmap.selectedNodes.forEach((n:INode) => {
+                            //     mindmap._moveAsChild(n);
+                            // });
+                            mindmap._moveAsChild(node, node.getPreviousSibling());
+                        }
+                        else {
+                            mindmap._moveAsParent(node);
+                        }
+                    }
+                    if ((this.settings.focusOnMove == true)) {
+                        mindmap.centerOnNode(mindmap.selectNode);
+                    }
+                }
+            }
+        });
+        // Alt + Shift + D
+        this.addCommand({
+            id: 'Move next siblings as children',
+            name: `${t('Move next siblings as children')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'D',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node) {
+                        mindmap.moveNextSiblingsAsChildren(node);
+                    }
+                    // else: No node selected: nothing to do
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Move all siblings as children',
+            name: `${t('Move all siblings as children')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Ctrl', 'Shift'],
+                    key: 'D',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node) {
+                        mindmap.moveAllSiblingsAsChildren(node);
+                    }
+                    // else: No node selected: nothing to do
+                }
+            }
+        });
+        // Alt + Shift + J
+        this.addCommand({
+            id: 'Join with the node below',
+            name: `${t('Join with the node below')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift'],
+                    key: 'J',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node) {
+                        mindmap.joinWithFollowingNode(node, false);
+                    }
+                    // else: No node selected: nothing to do
+                }
+            }
+        });
+        // Alt + Shift + Ctrl + J
+        this.addCommand({
+            id: 'Join as citation with the node below',
+            name: `${t('Join as citation with the node below')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt', 'Shift', 'Ctrl'],
+                    key: 'J',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node) {
+                        mindmap.joinWithFollowingNode(node, true);
+                    }
+                    // else: No node selected: nothing to do
+                }
+            }
+        });
+        // Alt + E
+        this.addCommand({
+            id: 'Center mindmap view on the current node',
+            name: `${t('Center mindmap view on the current node')}`,
+            hotkeys: [
+                {
+                    modifiers: ['Alt'],
+                    key: 'E',
+                },
+            ],
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    mindmap.centerOnNode(mindmap.selectNode);
+                }
+            }
+        });
+        // Alt + Shift + E
+        this.addCommand({
+            id: 'Center mindmap view',
+            name: `${t('Center mindmap view')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    mindmap.center();
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Display the node\'s info in console',
+            name: `${t('Display the node\'s info in console')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView === null || mindmapView === void 0 ? void 0 : mindmapView.mindmap) {
+                    var mindmap = mindmapView.mindmap;
+                    var node = mindmap.selectNode;
+                    if (node) {
+                        console.log("Node idx: " + node.getIndex());
+                        console.log("Previous node idx: " + node.getPreviousSibling().getIndex());
+                        console.log("Next node idx: " + node.getNextSibling().getIndex());
+                        console.log("Node pos: x=" + node.getPosition().x + " / y=" + node.getPosition().y);
+                        console.log("Node dim: x=" + node.getDimensions().x + " / y=" + node.getDimensions().y);
+                        console.log("Canvas: " + mindmap.setting.canvasSize);
+                        console.log("Disp scroll: x=" + mindmap.containerEL.scrollLeft + " / y=" + mindmap.containerEL.scrollTop);
+                        console.log("Disp client: x=" + mindmap.containerEL.clientWidth + " / y=" + mindmap.containerEL.clientHeight);
+                        //node.setText
+                    }
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Export to html',
+            name: `${t('Export to html')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView) {
+                    mindmapView.exportToSvg();
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Export to JPEG (LQ)',
+            name: `${t('Export to JPEG (LQ)')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView) {
+                    mindmapView.exportToJpeg(1);
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Export to PNG (LQ)',
+            name: `${t('Export to PNG (LQ)')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView) {
+                    mindmapView.exportToPng(1);
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Export to JPEG',
+            name: `${t('Export to JPEG')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView) {
+                    mindmapView.exportToJpeg(2);
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Export to PNG',
+            name: `${t('Export to PNG')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView) {
+                    mindmapView.exportToPng(2);
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Export to JPEG (HQ)',
+            name: `${t('Export to JPEG (HQ)')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView) {
+                    mindmapView.exportToJpeg(4);
+                }
+            }
+        });
+        this.addCommand({
+            id: 'Export to PNG (HQ)',
+            name: `${t('Export to PNG (HQ)')}`,
+            callback: () => {
+                const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+                if (mindmapView) {
+                    mindmapView.exportToPng(4);
+                }
+            }
+        });
+        this.registerView(mindmapViewType, (leaf) => new MindMapView(leaf, this));
+        this.registerEvents();
+        this.registerMonkeyAround();
+        this.addSettingTab(new MindMapSettingsTab(this.app, this));
     }
     onunload() {
         this.app.workspace.detachLeavesOfType(mindmapViewType);
         //this.app.workspace.unregisterHoverLinkSource(frontMatterKey);
     }
-    newMindMap(folder) {
+    async newMindMap(folder) {
         var _a;
-        return __awaiter(this, void 0, void 0, function* () {
-            const targetFolder = folder
-                ? folder
-                : this.app.fileManager.getNewFileParent(((_a = this.app.workspace.getActiveFile()) === null || _a === void 0 ? void 0 : _a.path) || "");
-            try {
-                // @ts-ignore
-                const mindmap = yield this.app.fileManager.createNewMarkdownFile(targetFolder, `${t('Untitled mindmap')}`);
-                yield this.app.vault.modify(mindmap, basicFrontmatter);
-                setTimeout(() => __awaiter(this, void 0, void 0, function* () {
-                    yield this.app.workspace.getLeaf().setViewState({
-                        type: mindmapViewType,
-                        state: { file: mindmap.path },
-                    });
-                }), 100);
-            }
-            catch (e) {
-                console.error("Error creating mindmap board:", e);
-            }
-        });
+        const targetFolder = folder
+            ? folder
+            : this.app.fileManager.getNewFileParent(((_a = this.app.workspace.getActiveFile()) === null || _a === void 0 ? void 0 : _a.path) || "");
+        try {
+            // @ts-ignore
+            const mindmap = await this.app.fileManager.createNewMarkdownFile(targetFolder, `${t('Untitled mindmap')}`);
+            await this.app.vault.modify(mindmap, basicFrontmatter);
+            setTimeout(async () => {
+                await this.app.workspace.getLeaf().setViewState({
+                    type: mindmapViewType,
+                    state: { file: mindmap.path },
+                });
+            }, 100);
+        }
+        catch (e) {
+            console.error("Error creating mindmap board:", e);
+        }
     }
-    loadSettings() {
-        return __awaiter(this, void 0, void 0, function* () {
-            this.settings = Object.assign({
-                canvasSize: 8000,
-                headLevel: 2,
-                fontSize: 16,
-                background: 'transparent',
-                layout: 'mindmap',
-                layoutDirect: 'mindmap'
-            }, yield this.loadData());
-        });
+    async loadSettings() {
+        this.settings = Object.assign({
+            canvasSize: 8000,
+            headLevel: 2,
+            fontSize: 16,
+            background: 'transparent',
+            layout: 'mindmap',
+            layoutDirect: 'mindmap',
+            focusOnMove: false
+        }, await this.loadData());
     }
-    saveSettings() {
-        return __awaiter(this, void 0, void 0, function* () {
-            yield this.saveData(this.settings);
-        });
+    async saveSettings() {
+        await this.saveData(this.settings);
     }
-    setMarkdownView(leaf) {
-        return __awaiter(this, void 0, void 0, function* () {
-            yield leaf.setViewState({
-                type: "markdown",
-                state: leaf.view.getState(),
-                popstate: true,
-            }, { focus: true });
-        });
+    async setMarkdownView(leaf) {
+        await leaf.setViewState({
+            type: "markdown",
+            state: leaf.view.getState(),
+            popstate: true,
+        }, { focus: true });
     }
-    setMindMapView(leaf) {
-        return __awaiter(this, void 0, void 0, function* () {
-            yield leaf.setViewState({
-                type: mindmapViewType,
-                state: leaf.view.getState(),
-                popstate: true,
-            });
+    async setMindMapView(leaf) {
+        await leaf.setViewState({
+            type: mindmapViewType,
+            state: leaf.view.getState(),
+            popstate: true,
         });
     }
     registerEvents() {
@@ -40587,7 +40807,7 @@ class MindMapPlugin extends obsidian.Plugin {
                 });
             }
             //add markdown view menu  open as mind map view
-            if (leaf && this.mindmapFileModes[leaf.id || file.path] == 'markdown') {
+            if (leaf && file instanceof obsidian.TFile && this.mindmapFileModes[leaf.id || file.path] == 'markdown') {
                 const cache = this.app.metadataCache.getFileCache(file);
                 if ((cache === null || cache === void 0 ? void 0 : cache.frontmatter) && cache.frontmatter[frontMatterKey]) {
                     menu.addItem((item) => {
@@ -40645,7 +40865,10 @@ class MindMapPlugin extends obsidian.Plugin {
                         //   new Notice(cache.frontmatter[frontMatterKey]);
                         if ((cache === null || cache === void 0 ? void 0 : cache.frontmatter) && cache.frontmatter[frontMatterKey]) {
                             // If we have it, force the view type to kanban
-                            const newState = Object.assign(Object.assign({}, state), { type: mindmapViewType });
+                            const newState = {
+                                ...state,
+                                type: mindmapViewType,
+                            };
                             self.mindmapFileModes[state.state.file] = mindmapViewType;
                             return next.apply(this, [newState, ...rest]);
                         }

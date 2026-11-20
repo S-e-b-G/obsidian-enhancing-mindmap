@@ -42,6 +42,7 @@ export class MindMapSettingsTab extends PluginSettingTab {
                         const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
                         mindmapLeaves.forEach((leaf) => {
                             var v = leaf.view as MindMapView;
+                            if (!(v instanceof MindMapView) || !v.mindmap) return;
                             v.mindmap.setting.canvasSize = _v;
                             v.mindmap.setAppSetting();
                             var box = v.mindmap.root.getBox();
@@ -64,6 +65,7 @@ export class MindMapSettingsTab extends PluginSettingTab {
                         const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
                         mindmapLeaves.forEach((leaf) => {
                             var v = leaf.view as MindMapView;
+                            if (!(v instanceof MindMapView) || !v.mindmap) return;
                             v.mindmap.setting.background = this.plugin.settings.background;
                             v.mindmap.setAppSetting();
                         });
@@ -88,6 +90,7 @@ export class MindMapSettingsTab extends PluginSettingTab {
                         const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
                         mindmapLeaves.forEach((leaf) => {
                             var v = leaf.view as MindMapView;
+                            if (!(v instanceof MindMapView) || !v.mindmap) return;
                             v.mindmap.setting.headLevel = this.plugin.settings.headLevel;
                         });
                     }));
@@ -107,6 +110,7 @@ export class MindMapSettingsTab extends PluginSettingTab {
                         const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
                         mindmapLeaves.forEach((leaf) => {
                             var v = leaf.view as MindMapView;
+                            if (!(v instanceof MindMapView) || !v.mindmap) return;
                             v.mindmap.setting.fontSize = this.plugin.settings.fontSize;
                             v.mindmap.setAppSetting();
                             v.mindmap.traverseBF((n: MyNode) => {
@@ -133,6 +137,7 @@ export class MindMapSettingsTab extends PluginSettingTab {
                         const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
                         mindmapLeaves.forEach((leaf) => {
                             var v = leaf.view as MindMapView;
+                            if (!(v instanceof MindMapView) || !v.mindmap) return;
                             v.mindmap.setting.layoutDirect = this.plugin.settings.layoutDirect;
                             v.mindmap.refresh();
                         });
@@ -147,16 +152,18 @@ export class MindMapSettingsTab extends PluginSettingTab {
                     .setPlaceholder('Example: red,orange,blue ...')
                     .onChange((value: string) => {
                         //this.plugin.settings.strokeArray = value
-                        this.plugin.settings.strokeArray = value.split(',');
+                        const colors = value.split(',');
+                        this.plugin.settings.strokeArray = colors;
                         this.plugin.saveData(this.plugin.settings);
                         const mindmapLeaves = this.app.workspace.getLeavesOfType(mindmapViewType);
 
                         mindmapLeaves.forEach((leaf) => {
                             var v = leaf.view as MindMapView;
+                            if (!(v instanceof MindMapView) || !v.mindmap) return;
                             //v.mindmap.setting.strokeArray = this.plugin.settings.strokeArray.split(',');
-                            v.mindmap.setting.strokeArray = this.plugin.settings.strokeArray;
+                            v.mindmap.setting.strokeArray = colors;
                             if( v.mindmap.mmLayout){
-                                v.mindmap.mmLayout.colors=v.mindmap.setting.strokeArray;
+                                v.mindmap.mmLayout.colors=colors;
                             }
 
                             v.mindmap.traverseBF((n: MyNode) => {

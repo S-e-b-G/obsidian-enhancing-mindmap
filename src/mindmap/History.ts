@@ -4,7 +4,7 @@ class History {
     limit:number = 50;
     undos:Command[] = [];
     redos:Command[] = [];
-    saveCommand:Command = null;
+    saveCommand:Command | null | undefined = null;
 
     constructor(limit?:number) {
         this.limit = limit || 50;     
@@ -25,9 +25,11 @@ class History {
     undo() {
         if(this.canUndo()) {
             var command = this.undos.pop();
-            this.redos.push(command);
-            command.undo();
-            this.change(command);
+            if (command) {
+                this.redos.push(command);
+                command.undo();
+                this.change(command);
+            }
         }
     }
 
@@ -38,9 +40,11 @@ class History {
     redo() {
         if (this.canRedo()) {
             var command = this.redos.pop()
-            this.undos.push(command);
-            command.redo();
-            this.change(command)
+            if (command) {
+                this.undos.push(command);
+                command.redo();
+                this.change(command)
+            }
         }
     }
 

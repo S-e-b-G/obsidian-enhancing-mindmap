@@ -6,7 +6,7 @@ export default class Layout {
     layoutName='mindmap';
     direct:string='';
     root:Node;
-    mind?:MindMap;
+    mind:MindMap;
     levelDis:number = 40;
     nodeDis:number = 8;
     firstLevelDis:number = 80;
@@ -18,8 +18,8 @@ export default class Layout {
     colors:string[]=[];
     lineWidth=2;
     constructor(node:Node,direct?:string,colors?:string[]){
-       this.root = node||null;
-       this.mind = node?.mindmap||null;
+       this.root = node;
+       this.mind = node.mindmap;
        this.direct = direct||'mindmap';
        this.colors=colors||[];
       

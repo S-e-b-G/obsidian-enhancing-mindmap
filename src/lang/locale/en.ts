@@ -54,6 +54,7 @@ export default {
     'Italicize the node\'s text':'Italicize the node text',
     'Highlight the node\'s text':'Highlight the node\'s text',
     'Strike through the node\'s text':'Strike through the node\'s text',
+    'Set the node\'s text in gray':'Set the node\'s text in gray 🔘',
     'Add tabulation':'Add tabulation',
     'Add line break (<br>)':'Add line break (<br>)',
     'Remove line breaks (<br>)':'Remove line breaks (<br>)',

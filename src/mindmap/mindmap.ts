@@ -1,15 +1,15 @@
 import INode, { INodeData } from './INode'
 import Layout from './Layout'
-import { Notice, Platform } from 'obsidian'
+import { Component, Notice, Platform } from 'obsidian'
 import SVG from 'svg.js'
-import { MindMapView } from '../MindMapView'
+import type { MindMapView } from '../MindMapView'
 import { frontMatterKey, basicFrontmatter } from '../constants';
 import Exec from './Execute'
-import {uuid} from '../MindMapView'
+import {uuid} from './uuid'
 
 import importXmind  from './import/xmindZen'
 import jsZip from 'jszip'
-import { t } from 'src/lang/helpers'
+import { t } from '../lang/helpers'
 
 let deleteIcon = '<svg class="icon" width="16px" height="16.00px" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path  d="M799.2 874.4c0 34.4-28 62.4-62.368 62.4H287.2a62.496 62.496 0 0 1-62.4-62.4V212h574.4v662.4zM349.6 100c0-7.2 5.6-12.8 12.8-12.8h300c7.2 0 12.768 5.6 12.768 12.8v37.6H349.6V100z m636.8 37.6H749.6V100c0-48-39.2-87.2-87.2-87.2h-300a87.392 87.392 0 0 0-87.2 87.2v37.6H37.6C16.8 137.6 0 154.4 0 175.2s16.8 37.6 37.6 37.6h112v661.6A137.6 137.6 0 0 0 287.2 1012h449.6a137.6 137.6 0 0 0 137.6-137.6V212h112c20.8 0 37.6-16.8 37.6-37.6s-16.8-36.8-37.6-36.8zM512 824c20.8 0 37.6-16.8 37.6-37.6v-400c0-20.8-16.768-37.6-37.6-37.6-20.8 0-37.6 16.8-37.6 37.6v400c0 20.8 16.8 37.6 37.6 37.6m-175.2 0c20.8 0 37.6-16.8 37.6-37.6v-400c0-20.8-16.8-37.6-37.6-37.6s-37.6 16.8-37.6 37.6v400c0.8 20.8 17.6 37.6 37.6 37.6m350.4 0c20.8 0 37.632-16.8 37.632-37.6v-400c0-20.8-16.8-37.6-37.632-37.6-20.768 0-37.6 16.8-37.6 37.6v400c0 20.8 16.8 37.6 37.6 37.6" /></svg>';
 let addIcon = '<svg class="icon" width="16px" height="16.00px" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path  d="M512 1024C230.4 1024 0 793.6 0 512S230.4 0 512 0s512 230.4 512 512-230.4 512-512 512z m0-960C265.6 64 64 265.6 64 512s201.6 448 448 448 448-201.6 448-448S758.4 64 512 64z"  /><path d="M800 544H224c-19.2 0-32-12.8-32-32s12.8-32 32-32h576c19.2 0 32 12.8 32 32s-12.8 32-32 32z"  /><path  d="M512 832c-19.2 0-32-12.8-32-32V224c0-19.2 12.8-32 32-32s32 12.8 32 32v576c0 19.2-12.8 32-32 32z"  /></svg>';
@@ -29,8 +29,8 @@ interface Setting {
 }
 
 export default class MindMap {
-    root: INode;
-    status: string;
+    root!: INode;
+    status?: string;
     appEl: HTMLElement;
     contentEL: HTMLElement;
     containerEL: HTMLElement;
@@ -40,7 +40,7 @@ export default class MindMap {
     lastSelectedNode?: INode;
     // selectingNodes?:boolean;
     // selectedNodes?: INode[];
-    setting: Setting;
+    setting: Setting & { canvasSize: number };
     data: INodeData;
     drag?: boolean;
     startX?: number;
@@ -53,8 +53,9 @@ export default class MindMap {
     _nodeNum: number = 0;
     _tempNum: number = 0;
     view?: MindMapView;
+    renderComponent = new Component();
     colors: string[] = [];
-    _dragNode: INode;
+    _dragNode?: INode;
     exec: Exec;
     scalePointer: number[] = [];
     mindScale = 100;
@@ -62,8 +63,8 @@ export default class MindMap {
     _indicateDom:HTMLElement;
     _menuDom:HTMLElement;
     _dragType:string='';
-    _left:number;
-    _top:number;
+    _left?:number;
+    _top?:number;
     dispLevel:number;
     isComposing = false;
     isFocused = true;
@@ -79,10 +80,11 @@ export default class MindMap {
             exportMdModel: 'default',
             headLevel: 2,
             layoutDirect: ''
-        }, setting || {});
+        }, setting || {}, { canvasSize: setting?.canvasSize ?? 36000 });
 
 
         this.data = data;
+        this.renderComponent.load();
         this.appEl = document.createElement('div');
 
         this.appEl.classList.add('mm-mindmap');
@@ -197,6 +199,9 @@ export default class MindMap {
                 that.root = n;
                 n.data.isRoot = true;
             } else {
+                if (!p) {
+                    throw new Error("Cannot initialize a non-root mind-map node without a parent");
+                }
                 n.setPosition(0, 0);
                 p.children.push(n);
                 n.parent = p;
@@ -257,7 +262,7 @@ export default class MindMap {
     }
 
     getNodeById(id: string) {
-        var snode: INode = null;
+        var snode: INode | undefined;
         this.traverseDF((n: INode) => {
             if (n.getId() == id) {
                 snode = n;
@@ -267,17 +272,28 @@ export default class MindMap {
         return snode;
     }
 
+    getNodeFromElement(element: Element): INode | undefined {
+        const nodeElement = element.closest('.mm-node');
+        if (!nodeElement) return;
+        const id = nodeElement.getAttribute('data-id');
+        const node = id ? this.getNodeById(id) : undefined;
+        if (!node) {
+            console.error("Could not find mind-map node for element", nodeElement);
+        }
+        return node;
+    }
+
     clearSelectNode() {
         if (this.selectNode) {
             this.lastSelectedNode = this.selectNode;
             this.selectNode.unSelect();
-            this.selectNode = null
+            this.selectNode = undefined
         }
         if (this.editNode) {
             if(this.editNode.data.isEdit){
                 this.editNode.cancelEdit();
             }
-            this.editNode = null;
+            this.editNode = undefined;
         }
 
         // if(this.selectingNodes)
@@ -337,7 +353,7 @@ export default class MindMap {
         this.appEl.removeEventListener('dragstart', this.appDragstart);
         this.appEl.removeEventListener('dragover', this.appDragover);
         this.appEl.removeEventListener('dragend', this.appDragend);
-        this.appEl.removeEventListener('dblClick', this.appDblclickFn);
+        this.appEl.removeEventListener('dblclick', this.appDblclickFn);
         this.appEl.removeEventListener('mouseover', this.appMouseOverFn);
         this.appEl.removeEventListener('drop', this.appDrop);
         document.removeEventListener('keyup', this.appKeyup);
@@ -466,11 +482,11 @@ export default class MindMap {
         // }
     }
 
-     compositionStart(e: KeyboardEvent) {
+     compositionStart(e: CompositionEvent) {
 
         this.isComposing = true;
      }
-     compositionEnd(e: KeyboardEvent) {
+     compositionEnd(e: CompositionEvent) {
 
         this.isComposing = false;
      }
@@ -561,7 +577,7 @@ export default class MindMap {
                 var node = this.selectNode;
                 if (node && node.data.isEdit) {
                     node.select();
-                    node.mindmap.editNode = null;
+                    node.mindmap.editNode = undefined;
                     node.cancelEdit();
                     this.undo();
                     //this.selectNode.unSelect();
@@ -576,8 +592,9 @@ export default class MindMap {
                 var node = this.selectNode;
                 if( node && !node.data.isEdit )
                 {
-                    var l_selectedNode = node;
-                    while(  (this.selectNode == node)       &&
+                    var l_selectedNode: INode | undefined = node;
+                    while(  l_selectedNode                 &&
+                            (this.selectNode == node)       &&
                             (l_selectedNode != this.root)   )
                     {
                         this._selectNode(l_selectedNode, "up");
@@ -593,8 +610,9 @@ export default class MindMap {
                 var node = this.selectNode;
                 if( node && !node.data.isEdit )
                 {
-                    var l_selectedNode = node;
-                    while(  (this.selectNode == node)       &&
+                    var l_selectedNode: INode | undefined = node;
+                    while(  l_selectedNode                 &&
+                            (this.selectNode == node)       &&
                             (l_selectedNode != this.root)   )
                     {
                         this._selectNode(l_selectedNode, "down");
@@ -611,14 +629,13 @@ export default class MindMap {
                 if (node && !node.data.isEdit) {
                     var rootPos = this.root.getPosition();
                     var nodePos = node.getPosition();
-                    if(rootPos.x > nodePos.x)
+                    if(rootPos.x > nodePos.x && node.parent)
                     {// Node on left side of the mindmap
                         node.unSelect();
                         node.parent.select();
                     }
                     else
                     {
-                        var node = this.selectNode;
                         node.mindmap.execute('expandNode', {
                             node
                         });
@@ -635,14 +652,13 @@ export default class MindMap {
                 if (node && !node.data.isEdit) {
                     var rootPos = this.root.getPosition();
                     var nodePos = node.getPosition();
-                    if(rootPos.x < nodePos.x)
+                    if(rootPos.x < nodePos.x && node.parent)
                     {// Node on right side of the mindmap
                         node.unSelect();
                         node.parent.select();
                     }
                     else
                     {
-                        var node = this.selectNode;
                         node.mindmap.execute('expandNode', {
                             node
                         });
@@ -1136,7 +1152,7 @@ export default class MindMap {
         var viewportHeight = this.containerEL.clientHeight;
         var diagonalViewport = Math.sqrt(viewportWidth * viewportWidth + viewportHeight * viewportHeight);
         const MAX_PARENT_DISTANCE = diagonalViewport / 5;
-        var waitNode: INode = null;
+        var waitNode: INode | undefined;
         var nodePos = node.getPosition();
         // var mind = this;
         var rootPos = this.root.getPosition();
@@ -1239,7 +1255,7 @@ export default class MindMap {
         if (!node) return;
         if (!node.isExpand) return;
         var minDis: number;
-        var waitNode: INode = null;
+        var waitNode: INode | undefined;
         var pos = node.getPosition();
         if (node.children) {
             node.children.forEach(n => {
@@ -1277,52 +1293,86 @@ export default class MindMap {
         return waitNode;
     }
 
-    _formatNode(node: INode, i_prefix_1: string, i_prefix_2: string) {
+    _formatNode(node: INode, i_prefix_1: string, i_prefix_2: string, i_suffix: string = "") {
         var text = node.data.text;
+        var l_pre_length = i_prefix_1.length;
+        var l_suf_length = i_suffix.length;
 
-        if( (text.substring(0,2) == i_prefix_1)  ||
-            (text.substring(0,2) == i_prefix_2)  )
+        if( (text.substring(0,l_pre_length) == i_prefix_1)  ||
+            (text.substring(0,l_pre_length) == i_prefix_2)  )
         {// Prefix must be substracted, bold first
-            text = text.substring(2); // Remove leading prefix
+            text = text.substring(l_pre_length); // Remove leading prefix
 
-            if( (text.substring(text.length-2) == i_prefix_1)  ||
-                (text.substring(text.length-2) == i_prefix_2)  )
-            {// Suffix must be substracted
-                text = text.substring(0,text.length-2);
+            if(i_suffix == "") {
+                if( (text.substring(text.length-l_pre_length) == i_prefix_1)  ||
+                    (text.substring(text.length-l_pre_length) == i_prefix_2)  )
+                {// Suffix must be substracted
+                    text = text.substring(0,text.length-l_pre_length);
+                }
+                // else: no trailing prefix
             }
-            // else: no trailing prefix
+            else{
+                if( (text.substring(text.length-l_suf_length) == i_suffix)  )
+                {// Suffix must be substracted
+                    text = text.substring(0,text.length-l_suf_length);
+                }
+            }
         }
 
-        else if(    (text.substring(1,3) == i_prefix_1)  ||
-                    (text.substring(1,3) == i_prefix_2)  )
+        else if(    (text.substring(1,l_pre_length+1) == i_prefix_1)  ||
+                    (text.substring(1,l_pre_length+1) == i_prefix_2)  )
         {// Prefix must be substracted, italic (?) first
-            text = text[0] + text.substring(3); // Remove prefix
+            text = text[0] + text.substring(l_pre_length+1); // Remove prefix
 
-            if( (text.slice(-3, -1) == i_prefix_1)   ||
-                (text.slice(-3, -1) == i_prefix_2)   )
-            {// Suffix must be substracted
-                text = text.substring(0,text.length-3) +
-                text.slice(-1);
+            if(i_suffix == "") {
+                if( (text.slice(-(l_pre_length+1), -1) == i_prefix_1)   ||
+                    (text.slice(-(l_pre_length+1), -1) == i_prefix_2)   )
+                {// Suffix must be substracted
+                    text = text.substring(0,text.length-(l_pre_length+1)) +
+                    text.slice(-1);
+                }
+                // else: no trailing prefix
             }
-            // else: no trailing prefix
+            else{
+                if(text.slice(-(l_suf_length+1), -1) == i_suffix)
+                {// Suffix must be substracted
+                    text = text.substring(0,text.length-(l_suf_length+1)) +
+                    text.slice(-1);
+                }
+                // else: no Suffix
+            }
+
         }
 
-        else if(    (text.substring(2,4) == i_prefix_1)  ||
-                    (text.substring(2,4) == i_prefix_2)  )
+        else if(    (text.substring(2,l_pre_length+2) == i_prefix_1)  ||
+                    (text.substring(2,l_pre_length+2) == i_prefix_2)  )
         {// Prefix must be substracted, highlight (?) first
-            text = text.substring(0,2) + text.substring(4); // Remove prefix
+            text = text.substring(0,2) + text.substring(l_pre_length+2); // Remove prefix
 
-            if( (text.slice(-4, -2) == i_prefix_1)   ||
-                (text.slice(-4, -2) == i_prefix_2)   )
-            {// Suffix must be substracted
-                text = text.substring(0,text.length-4) +
-                text.slice(-2);
+            if(i_suffix == "") {
+                if( (text.slice(-(l_pre_length+2), -2) == i_prefix_1)   ||
+                    (text.slice(-(l_pre_length+2), -2) == i_prefix_2)   )
+                {// Suffix must be substracted
+                    text = text.substring(0,text.length-(l_pre_length+2)) +
+                    text.slice(-2);
+                }
+                // else: no trailing prefix
             }
-            // else: no trailing prefix
+            else{
+                if(text.slice(-(l_suf_length+2), -2) == i_suffix)
+                {// Suffix must be substracted
+                    text = text.substring(0,text.length-(l_suf_length+2)) +
+                    text.slice(-2);
+                }
+                // else: no Suffix
+            }
         }
 
         else {// No pre-/suf-fix: add it
-            text = i_prefix_1+text+i_prefix_1;
+            if(i_suffix == "")
+            { text = i_prefix_1 + text + i_prefix_1; }
+            else
+            { text = i_prefix_1 + text + i_suffix; }
         }
 
         // Set the text in the node
@@ -1340,7 +1390,8 @@ export default class MindMap {
     _moveAsParent(node: INode) {
         if( (!node.data.isEdit)     &&
             (!node.data.isRoot)     &&
-            (node.getLevel() > 1)   )
+            (node.getLevel() > 1)   &&
+            node.parent             )
         {// The node can be moved
             this.moveNode(node, node.parent, 'down');
         }
@@ -1385,7 +1436,7 @@ export default class MindMap {
         }
 
         var minDis: number;
-        var waitNode: INode = null;
+        var waitNode: INode | undefined;
         var pos = node.getPosition();
         var rootPos = this.root.getPosition();
         var level = node.getLevel();
@@ -1511,7 +1562,7 @@ export default class MindMap {
                 evt.preventDefault();
                 var targetEl = evt.target as HTMLElement;
                 var href = targetEl.getAttr("href");
-                if(href){
+                if(href && this.view?.file){
                     this.view.app.workspace.openLinkText(
                         href,
                         this.view.file.path,
@@ -1523,8 +1574,8 @@ export default class MindMap {
             if (targetEl.hasClass('mm-node-bar')) {
                 evt.preventDefault();
                 evt.stopPropagation();
-                var id = targetEl.closest('.mm-node').getAttribute('data-id');
-                var node = this.getNodeById(id);
+                var node = this.getNodeFromElement(targetEl);
+                if (!node) return;
 
                 if (node.isExpand) {
                     node.mindmap.execute('collapseNode', {
@@ -1549,7 +1600,7 @@ export default class MindMap {
 
                  if(targetEl.closest('.mm-icon-delete-node')){
                     var selectNode = this.selectNode;
-                    if(!node.data.isRoot && selectNode){
+                    if(selectNode && !selectNode.data.isRoot){
                        selectNode.mindmap.execute("deleteNodeAndChild", { node: selectNode });
                        this._menuDom.style.display='none';
                     }
@@ -1558,8 +1609,8 @@ export default class MindMap {
             }
 
             if (targetEl.closest('.mm-node')) {
-                var id = targetEl.closest('.mm-node').getAttribute('data-id');
-                var node = this.getNodeById(id);
+                var node = this.getNodeFromElement(targetEl);
+                if (!node) return;
                 if (!node.isSelect) {
                     this.clearSelectNode();
                     this.selectNode = node;
@@ -1583,15 +1634,15 @@ export default class MindMap {
         this.startY = evt.pageY;
         if (evt.target instanceof HTMLElement) {
             if (evt.target.closest('.mm-node')) {
-                var id = evt.target.closest('.mm-node').getAttribute('data-id');
-                this._dragNode = this.getNodeById(id);
-                this.drag = true;
+                this._dragNode = this.getNodeFromElement(evt.target);
+                this.drag = !!this._dragNode;
             }
         }
     }
 
     appDragend(evt: MouseEvent) {
         this.drag = false;
+        this._dragNode = undefined;
         this._indicateDom.style.display = 'none'
         this._menuDom.style.display = 'none';
     }
@@ -1603,14 +1654,17 @@ export default class MindMap {
         var x = evt.pageX;
         var y = evt.pageY;
 
-        if (this.drag) {
+        if (this.drag && this.startX !== undefined && this.startY !== undefined) {
             this.dx = x - this.startX;
-            this.dx = y - this.startY;
+            this.dy = y - this.startY;
         }
 
         if(target.closest('.mm-node')){
-            var nodeId =target.closest('.mm-node').getAttribute('data-id');
-            var node = this.getNodeById(nodeId);
+            var node = this.getNodeFromElement(target);
+            if (!node) {
+                this._indicateDom.style.display = 'none';
+                return;
+            }
             var box = node.getBox();
             this._dragType = this._getDragType(node, x, y);
             this._indicateDom.style.display = 'block';
@@ -1642,8 +1696,6 @@ export default class MindMap {
     }
 
     _getDragType(node:INode, x:number, y:number) {
-        if (!node) return;
-
         var box = node.contentEl.getBoundingClientRect();
 
         box.x = box.x
@@ -1699,19 +1751,19 @@ export default class MindMap {
         if (evt.target instanceof HTMLElement) {
             if (evt.target.closest('.mm-node')) {
                 evt.preventDefault();
-                var dropNodeId = evt.target.closest('.mm-node').getAttribute('data-id');
-                var dropNode = this.getNodeById(dropNodeId);
-                if (this._dragNode.data.isRoot) {
+                if (this._dragNode) {
+                    var dropNode = this.getNodeFromElement(evt.target);
+                    if (dropNode && !this._dragNode.data.isRoot) {
 
-                } else {
-                    if (evt.ctrlKey) {// Ctrl key pressed: copy the node
-                        let copiedNode = this.copyNode(this._dragNode);
-                        dropNode.select();
-                        this.pasteNode(copiedNode);
+                        if (evt.ctrlKey) {// Ctrl key pressed: copy the node
+                            let copiedNode = this.copyNode(this._dragNode);
+                            dropNode.select();
+                            this.pasteNode(copiedNode);
 
-                    }
-                    else {// Move the node
-                        this.moveNode(this._dragNode, dropNode,this._dragType);
+                        }
+                        else {// Move the node
+                            this.moveNode(this._dragNode, dropNode,this._dragType);
+                        }
                     }
                 }
             }
@@ -1725,6 +1777,11 @@ export default class MindMap {
                        var me = this;
                        var reader = new FileReader();
                        reader.onload=()=>{
+                            if (!(reader.result instanceof ArrayBuffer)) {
+                                console.error('Could not read XMind file as an ArrayBuffer');
+                                new Notice('Parse xmind error');
+                                return;
+                            }
                             jsZip.loadAsync(reader.result).then((e)=>{
                                var files = e.files;
                                for (var k in files) {
@@ -1765,7 +1822,7 @@ export default class MindMap {
 
         if (targetEl.tagName !== "A") return;
 
-        if (targetEl.hasClass("internal-link")) {
+        if (targetEl.hasClass("internal-link") && this.view?.file) {
             this.view.app.workspace.trigger("hover-link", {
                 event: evt,
                 source: frontMatterKey,
@@ -1782,15 +1839,15 @@ export default class MindMap {
         this.scalePointer = [];
         this.scalePointer.push(evt.offsetX, evt.offsetY);
         if (targetEl.closest('.mm-node')) {
-            var id = targetEl.closest('.mm-node').getAttribute('data-id');
-            var node = this.getNodeById(id);
+            var node = this.getNodeFromElement(targetEl);
             if (node) {
                 var box = node.getBox();
                 this.scalePointer = [];
                 this.scalePointer.push(box.x + box.width / 2, box.y + box.height / 2);
             }
         }else{
-            if(this.drag){
+            if(this.drag && this._left !== undefined && this._top !== undefined &&
+               this.startX !== undefined && this.startY !== undefined){
                 this.containerEL.scrollLeft = this._left - (evt.pageX - this.startX);
                 this.containerEL.scrollTop = this._top - (evt.pageY - this.startY);
             }
@@ -1821,8 +1878,8 @@ export default class MindMap {
                 return;
             }
             if (evt.target.closest('.mm-node') instanceof HTMLElement) {
-                var id = evt.target.closest('.mm-node').getAttribute('data-id');
-                this.selectNode = this.getNodeById(id);
+                this.selectNode = this.getNodeFromElement(evt.target);
+                if (!this.selectNode) return;
                 if (!this.editNode || (this.editNode && this.editNode != this.selectNode)) {
                     this.selectNode?.edit();
                     this.editNode = this.selectNode;
@@ -1874,6 +1931,7 @@ export default class MindMap {
         this.clearNode();
         this.removeEvent();
         this.draw?.clear();
+        this.renderComponent.unload();
     }
     //get node list rect point
     getBoundingRect(list: INode[]) {
@@ -2018,7 +2076,7 @@ export default class MindMap {
             joinedNode.children.forEach((n) => {
                 //this._moveAsChild(n, node);
                 let copiedNode = this.copyNode(n);
-                this.selectNode.unSelect();
+                this.selectNode?.unSelect();
                 node.select();
                 this.pasteNode(copiedNode);
             });
@@ -2138,7 +2196,7 @@ export default class MindMap {
     }
 
 
-    centerOnNode(node: INode) {
+    centerOnNode(node?: INode) {
         if(node == null)
         {//No node given as input argument
             this.center();
@@ -2432,6 +2490,11 @@ export default class MindMap {
 
   pasteNode(text:string){
         var node = this.selectNode;
+        if (!text) return;
+        if (!node) {
+            console.error('Cannot paste a mind-map node without a selection');
+            return;
+        }
         if(text){
             try{
                   var json =JSON.parse(text);

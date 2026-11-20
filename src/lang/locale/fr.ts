@@ -53,6 +53,7 @@ export default {
     'Italicize the node\'s text':'Mettre en italique le texte du nœud',
     'Highlight the node\'s text':'Mettre en surbrillance le texte du nœud',
     'Strike through the node\'s text':'Barrer le texte du nœud',
+    'Set the node\'s text in gray':'Mettre le texte du nœud en gris 🔘',
     'Add tabulation':'Ajouter une tabulation',
     'Add line break (<br>)':'Ajouter un retour à la ligne (<br>)',
     'Remove line breaks (<br>)':'Supprimer les retours à la ligne (<br>)',

@@ -23,8 +23,8 @@ export abstract class Command {
 
 export class AddNode extends Command {
     node:INode;
-    parent:INode = null;
-    mind:MindMap =null;
+    parent:INode;
+    mind:MindMap;
     index:number = -1;
     constructor(node:INode, parent:INode, mind?:MindMap) {
         super('addNode');
@@ -62,18 +62,21 @@ export class AddNode extends Command {
 
 export class RemoveNode extends Command {
     node:INode;
-    parent:INode = null;
-    mind:MindMap =null;
+    parent?:INode;
+    mind:MindMap;
     index:number = -1;
     constructor(node:INode, mind?:MindMap) {
         super('removeNode');
         this.node = node;
-        this.parent = this.node.parent||null;
+        this.parent = this.node.parent;
         this.mind = mind||this.node.mindmap;
     }
     execute():boolean {
         if(this.node.data.isRoot == true){
             return false;
+        }
+        if (!this.parent) {
+            throw new Error('Cannot remove a node without its parent');
         }
         this.node.clearCacheData();
         this.mind.clearSelectNode();
@@ -84,6 +87,9 @@ export class RemoveNode extends Command {
     }
 
     undo() {
+        if (!this.parent) {
+            throw new Error('Cannot restore a removed node without its parent');
+        }
         this.mind.addNode(this.node, this.parent, this.index);
         this.node.clearCacheData();
         this.node.refreshBox();
@@ -130,34 +136,43 @@ export class MoveNode extends Command {
     data:any={};
     node:INode;
     oldParent:INode;
-    parent:INode;
+    parent?:INode;
     newParent?:INode;
     dropNode?:INode;
     type?:string;
     index:number = -1;
     constructor(data:any) {
         super('moveNode');
+        if (!data?.node?.parent || (data.type !== 'child' && data.type !== 'siblings')) {
+            throw new Error('Cannot move a node without its original parent and a valid move type');
+        }
         this.data = data;
+        this.node = data.node;
+        this.oldParent = data.node.parent;
         if (this.data.type.indexOf('child') > -1) {
-            this.node = this.data.node;
-            this.oldParent = this.data.oldParent;
+            if (!data.parent) {
+                throw new Error('Cannot move a node without a destination parent');
+            }
             this.parent = this.data.parent;
         } else {
-            this.node = this.data.node;
-            this.oldParent = this.node.parent;
             this.dropNode = this.data.dropNode;
-            this.newParent = this.dropNode.parent;
+            this.newParent = this.dropNode?.parent;
+            if (!this.dropNode || !this.newParent) {
+                throw new Error('Cannot move a node next to a node without a parent');
+            }
             this.type = this.data.direct;
         }
     }
 
     execute():boolean {
-        this.node.mindmap.clearSelectNode();
         if (this.data.type.indexOf('child') > -1) {
-            if (this.oldParent) {
-                this.index = this.oldParent.removeChild(this.node)
+            const parent = this.parent;
+            if (!parent) {
+                throw new Error('Cannot move a node without a destination parent');
             }
-            this.parent.addChild(this.node);
+            this.node.mindmap.clearSelectNode();
+            this.index = this.oldParent.removeChild(this.node)
+            parent.addChild(this.node);
             this.node.mindmap.traverseBF((n:INode) => {
                 n.boundingRect = null;
                 n.stroke = ''
@@ -168,10 +183,12 @@ export class MoveNode extends Command {
             this.refresh(this.node.mindmap);
             this.node.select();
         } else {
-
-            if (this.oldParent) {
-                this.index = this.oldParent.removeChild(this.node);
+            if (!this.newParent || !this.dropNode) {
+                throw new Error('Cannot move a node next to a node without a parent');
             }
+
+            this.node.mindmap.clearSelectNode();
+            this.index = this.oldParent.removeChild(this.node);
             this.node.mindmap.traverseBF((n:INode) => {
                 n.boundingRect = null;
                 n.stroke = ''
@@ -195,24 +212,30 @@ export class MoveNode extends Command {
     }
 
     undo() {
-        this.node.mindmap.clearSelectNode();
         if (this.data.type.indexOf('child') > -1) {
-            this.parent.removeChild(this.node);
-            if (this.oldParent) {
-                this.oldParent.addChild(this.node, this.index);
+            const parent = this.parent;
+            if (!parent) {
+                throw new Error('Cannot undo a node move without its destination parent');
             }
+            this.node.mindmap.clearSelectNode();
+            parent.removeChild(this.node);
+            this.oldParent.addChild(this.node, this.index);
 
             this.node.mindmap.traverseBF((n:INode) => {
                 n.boundingRect = null;
                 n.stroke = ''
             }, this.node);
 
-            this.parent.clearCacheData();
+            parent.clearCacheData();
             this.node.clearCacheData();
             this.refresh(this.node.mindmap);
             this.node.select();
         }
         else {
+            if (!this.newParent || !this.dropNode || !this.oldParent) {
+                throw new Error('Cannot undo a node move without its original and destination parents');
+            }
+            this.node.mindmap.clearSelectNode();
             this.newParent.removeChild(this.node);
             this.dropNode.clearCacheData();
             this.oldParent.addChild(this.node, this.index);
@@ -299,7 +322,7 @@ export class ExpandNode extends Command{
     node:INode
     data:any
     waitCollapse:any[]=[]
-    firstNode:INode
+    firstNode?:INode
     constructor(node:any, data:any) {
         super('copyNode');
         this.node = node;

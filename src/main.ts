@@ -1,6 +1,7 @@
 import {
   Plugin,
   WorkspaceLeaf,
+  TAbstractFile,
   TFile,
   TFolder,
   ViewState,
@@ -15,9 +16,10 @@ import { MindMapView, mindmapViewType } from "./MindMapView";
 import { frontMatterKey, basicFrontmatter } from './constants';
 import { t } from './lang/helpers'
 
+type WorkspaceLeafWithId = WorkspaceLeaf & { id?: string };
 
 export default class MindMapPlugin extends Plugin {
-  settings: MindMapSettings;
+  settings!: MindMapSettings;
   mindmapFileModes: { [file: string]: string } = {};
   _loaded: boolean = false;
   timeOut: any = null;
@@ -102,7 +104,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           navigator.clipboard.writeText('');
           var node = mindmap.selectNode;
@@ -127,7 +129,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           navigator.clipboard.writeText('');
           var node = mindmap.selectNode;
@@ -156,7 +158,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           navigator.clipboard.readText().then(text=>{
               mindmap.pasteNode(text);
@@ -183,7 +185,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           mindmap.undo();
         }
@@ -202,7 +204,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           mindmap.redo();
         }
@@ -215,7 +217,7 @@ export default class MindMapPlugin extends Plugin {
       name: `${t('Replace by the previous text')}`,
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node) {
@@ -240,7 +242,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if (node && !node.data.isEdit) {
@@ -263,7 +265,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node) {// A node is selected
@@ -279,14 +281,16 @@ export default class MindMapPlugin extends Plugin {
 
               // Move the new node under the previously selected one
               // Do not add this command to the history
-              mindmap.moveNode(newNode, node, 'down', false);
+              if (newNode) {
+                mindmap.moveNode(newNode, node, 'down', false);
+              }
             }
             else {// Editing mode => end edit mode
               //node.cancelEdit();
 
               mindmap.clearSelectNode();
               node.select();
-              node.mindmap.editNode=null;
+              node.mindmap.editNode=undefined;
               //this.selectNode.unSelect();
             }
           }
@@ -306,7 +310,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node) {
@@ -320,7 +324,7 @@ export default class MindMapPlugin extends Plugin {
               // mindmap.selectNode.unSelect();
               mindmap.clearSelectNode();
               node.select();
-              node.mindmap.editNode=null;
+              node.mindmap.editNode=undefined;
             }
           }
           //else: no node selected -> nothing to do
@@ -340,7 +344,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if (node && !node.data.isRoot && !node.data.isEdit) {
@@ -358,7 +362,7 @@ export default class MindMapPlugin extends Plugin {
       name: `${t('Select the node\'s text')}`,
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           let node = mindmap.selectNode;
           if(node) {
@@ -382,7 +386,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           if(mindmap.selectNode) {
             var l_prefix_1 = "**"; // Applied prefix
@@ -393,7 +397,7 @@ export default class MindMapPlugin extends Plugin {
             {// A node is edited: set in bold only the selected part
               var l_check_prefix = true;
               var l_set_as_suffix = true;
-              node.setSelectedText(l_prefix_1, l_prefix_2, l_check_prefix, l_set_as_suffix, true);
+              node.setSelectedText(l_prefix_1, l_prefix_2, "", l_check_prefix, l_set_as_suffix, true);
             }
 
             else
@@ -421,7 +425,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           if(mindmap.selectNode) {
             var node = mindmap.selectNode;
@@ -493,7 +497,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           if(mindmap.selectNode) {// There is a node selected: format
             var l_prefix_1 = "==";
@@ -504,7 +508,7 @@ export default class MindMapPlugin extends Plugin {
             {// A node is edited: set in bold only the selected part
               var l_check_prefix = true;
               var l_set_as_suffix = true;
-              node.setSelectedText(l_prefix_1, l_prefix_2, l_check_prefix, l_set_as_suffix, true);
+              node.setSelectedText(l_prefix_1, l_prefix_2, "", l_check_prefix, l_set_as_suffix, true);
             }
 
             else
@@ -521,9 +525,15 @@ export default class MindMapPlugin extends Plugin {
     this.addCommand({
       id: 'Strike through the node\'s text',
       name: `${t('Strike through the node\'s text')}`,
+      hotkeys: [
+        {
+          modifiers: ['Alt', 'Shift'],
+          key: '2',
+        },
+      ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           if(mindmap.selectNode) {// There is a node selected: format
             var l_prefix_1 = "~~";
@@ -534,16 +544,53 @@ export default class MindMapPlugin extends Plugin {
             {// A node is edited: set in bold only the selected part
               var l_check_prefix = true;
               var l_set_as_suffix = true;
-              node.setSelectedText(l_prefix_1, l_prefix_2, l_check_prefix, l_set_as_suffix, true);
+              node.setSelectedText(l_prefix_1, l_prefix_2, "", l_check_prefix, l_set_as_suffix, true);
             }
 
             else
             {// Set in bold the whole node
               mindmap._formatNode(node, l_prefix_1, l_prefix_2);
             }
-        }
+          }
         //else: no node selected: nothing to do
-}
+        }
+      }
+    });
+
+    // Alt + Shift + G
+    this.addCommand({
+      id: 'Set the node\'s text in gray',
+      name: `${t('Set the node\'s text in gray')}`,
+      hotkeys: [
+        {
+          modifiers: ['Alt', 'Shift'],
+          key: 'g',
+        },
+      ],
+      callback: () => {
+        const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
+        if(mindmapView?.mindmap){
+          var mindmap = mindmapView.mindmap;
+          if(mindmap.selectNode) {// There is a node selected: format
+            var l_prefix_1 = "~={grey}";
+            var l_prefix_2 = l_prefix_1;
+            var l_suffix   = "=~";
+            var node = mindmap.selectNode;
+
+            if(node.data.isEdit)
+            {// A node is edited: set in grey only the selected part
+              var l_check_prefix = true;
+              var l_set_as_suffix = true;
+              node.setSelectedText(l_prefix_1, l_prefix_2, l_suffix, l_check_prefix, l_set_as_suffix, true);
+            }
+
+            else
+            {// Set in grey the whole node
+              mindmap._formatNode(node, l_prefix_1, l_prefix_2, l_suffix);
+            }
+          }
+        //else: no node selected: nothing to do
+        }
       }
     });
 
@@ -559,15 +606,14 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           let node = mindmap.selectNode;
           if(node) {
             if(node.data.isEdit)
-              {// A node is edited: set in bold only the selected part
-
-              }
-            node.insertText('    ');
+            {// A node is edited:
+              node.insertText('    ');
+            }
           }
           //else: no node selected
         }
@@ -586,15 +632,14 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           let node = mindmap.selectNode;
           if(node) {
             if(node.data.isEdit)
-              {// A node is edited: set in bold only the selected part
-
-              }
-            node.setSelectedText('<br>', '<br>', false, false, false);
+            {// A node is edited:
+              node.setSelectedText('<br>', '<br>', "", false, false, false);
+            }
           }
           //else: no node selected
         }
@@ -613,11 +658,13 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           let node = mindmap.selectNode;
           if(node) {
-            node.removeLineBreak();
+            if (!node.data.isEdit)
+            { node.removeLineBreak(); }
+            // else: do not remove as there are often confusions with add line break
           }
           //else: no node selected
         }
@@ -630,12 +677,12 @@ export default class MindMapPlugin extends Plugin {
       name: `${t('Cancel edit')}`,
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if (node && node.data.isEdit) {
             node.select();
-            node.mindmap.editNode = null;
+            node.mindmap.editNode = undefined;
             node.cancelEdit();
             mindmap.undo();
             //this.selectNode.unSelect();
@@ -656,7 +703,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           if(mindmap.selectNode) {
             mindmap.setDisplayedLevel(mindmap.selectNode.getLevel()+1);
@@ -679,7 +726,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node)
@@ -687,7 +734,7 @@ export default class MindMapPlugin extends Plugin {
             mindmap.setChildrenDisplayedLevel(mindmap.getMaxNodeDisplayedLevel(node)+1);
             mindmap.refresh();
             //mindmap.scale(mindmap.mindScale);
-            mindmap.selectNode.select();
+            node.select();
           }
         }
       }
@@ -705,12 +752,12 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
             if(mindmap.selectNode) {
               mindmap.setDisplayedLevel(mindmap.selectNode.getLevel()-1);
               mindmap.refresh();
-              mindmap.selectNode.parent.select();
+              mindmap.selectNode.parent?.select();
           }
         }
       }
@@ -728,7 +775,7 @@ export default class MindMapPlugin extends Plugin {
         ],
           callback: () => {
           const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-          if(mindmapView){
+          if(mindmapView?.mindmap){
             var mindmap = mindmapView.mindmap;
             var node = mindmap.selectNode;
             if( (node)                                                  &&
@@ -737,7 +784,7 @@ export default class MindMapPlugin extends Plugin {
               mindmap.setChildrenDisplayedLevel(mindmap.getMaxNodeDisplayedLevel(node)-1);
               mindmap.refresh();
               mindmap.scale(mindmap.mindScale);
-              mindmap.selectNode.select();
+              node.select();
             }
           }
         }
@@ -755,7 +802,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node)
@@ -776,7 +823,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(!node)
@@ -815,7 +862,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(!node)
@@ -827,7 +874,7 @@ export default class MindMapPlugin extends Plugin {
                   (!node.data.isRoot)  )
           {// The node can be moved
             var type='down';
-            if(node.getIndex() == node.parent.children.length-1)
+            if(node.parent && node.getIndex() == node.parent.children.length-1)
             {// Last sibling: move ABOVE "next" (=first) node
                 type='top';
             }
@@ -854,7 +901,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(!node)
@@ -894,7 +941,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(!node)
@@ -938,7 +985,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node)
@@ -960,7 +1007,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node)
@@ -983,7 +1030,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node)
@@ -1005,7 +1052,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node)
@@ -1027,7 +1074,7 @@ export default class MindMapPlugin extends Plugin {
       ],
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           mindmap.centerOnNode(mindmap.selectNode);
         }
@@ -1040,7 +1087,7 @@ export default class MindMapPlugin extends Plugin {
       name: `${t('Center mindmap view')}`,
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           mindmap.center();
         }
@@ -1052,7 +1099,7 @@ export default class MindMapPlugin extends Plugin {
       name: `${t('Display the node\'s info in console')}`,
       callback: () => {
         const mindmapView = this.app.workspace.getActiveViewOfType(MindMapView);
-        if(mindmapView){
+        if(mindmapView?.mindmap){
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node) {
@@ -1202,7 +1249,8 @@ export default class MindMapPlugin extends Plugin {
       fontSize: 16,
       background: 'transparent',
       layout: 'mindmap',
-      layoutDirect: 'mindmap'
+      layoutDirect: 'mindmap',
+      focusOnMove: false
     }, await this.loadData());
   }
 
@@ -1231,7 +1279,7 @@ export default class MindMapPlugin extends Plugin {
 
   registerEvents() {
     this.registerEvent(
-      this.app.workspace.on("file-menu", (menu, file: TFile,source:string,leaf?:WorkspaceLeaf) => {
+      this.app.workspace.on("file-menu", (menu, file: TAbstractFile,source:string,leaf?:WorkspaceLeaf) => {
         // Add a menu item to the folder context menu to create a board
         if (file instanceof TFolder) {
           menu.addItem((item) => {
@@ -1244,7 +1292,7 @@ export default class MindMapPlugin extends Plugin {
 
         //add markdown view menu  open as mind map view
 
-        if(leaf&&this.mindmapFileModes[leaf.id||file.path] == 'markdown'){
+        if(leaf && file instanceof TFile && this.mindmapFileModes[(leaf as WorkspaceLeafWithId).id || file.path] == 'markdown'){
              const cache = this.app.metadataCache.getFileCache(file);
              if(cache?.frontmatter && cache.frontmatter[frontMatterKey]){
                   menu.addItem((item) => {
@@ -1252,7 +1300,7 @@ export default class MindMapPlugin extends Plugin {
                    .setTitle(`${t('Open as mindmap board')}`)
                    .setIcon("document")
                    .onClick(() => {
-                     this.mindmapFileModes[leaf.id || file.path] = mindmapViewType;
+                     this.mindmapFileModes[(leaf as WorkspaceLeafWithId).id || file.path] = mindmapViewType;
                      this.setMindMapView(leaf);
                    });
                  }).addSeparator();
@@ -1287,7 +1335,7 @@ export default class MindMapPlugin extends Plugin {
         // Kanbans can be viewed as markdown or kanban, and we keep track of the mode
         // while the file is open. When the file closes, we no longer need to keep track of it.
         detach(next) {
-          return function () {
+          return function (this: WorkspaceLeafWithId) {
             const state = this.view?.getState();
 
             if (state?.file && self.mindmapFileModes[this.id || state.file]) {
@@ -1300,7 +1348,7 @@ export default class MindMapPlugin extends Plugin {
 
         setViewState(next) {
 
-          return function (state: ViewState, ...rest: any[]) {
+          return function (this: WorkspaceLeafWithId, state: ViewState, ...rest: [any?]) {
             // new Notice( state.type);
             if (
               self._loaded &&

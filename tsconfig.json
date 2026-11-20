@@ -1,13 +1,12 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "inlineSourceMap": true,
-    "inlineSources": true,
     "module": "ESNext",
-    "target": "es6",
+    "target": "es2018",
     "allowJs": true,
     "noImplicitAny": true,
-    "moduleResolution": "node",
+    "strict": true,
+    "skipLibCheck": true,
+    "moduleResolution": "Bundler",
     "importHelpers": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop":true,
@@ -17,6 +16,7 @@
       "scripthost",
       "es2015"
     ],
+    "rootDir": "src",
     "outDir": "build",
   },
   "include": ["src/**/*"],

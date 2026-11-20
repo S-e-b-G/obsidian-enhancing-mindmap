@@ -1,6 +1,6 @@
 import History from './History'
 import * as cmd from './Cmds'
-import { uuid } from '../MindMapView'
+import { uuid } from './uuid'
 import {t} from '../lang/helpers'
 import INode from './INode'
 
@@ -36,59 +36,73 @@ export default class Exec{
         switch(name){
             case 'addChildNode':
             case 'addSiblingNode':
-                if(data){
+                if(data?.parent){
                     var d = {
                         id: uuid(),
                         text: data.text || t('Sub title')
                     }
-                    var parent:INode = data.parent;
-                    var node = new INode(d,parent.mindmap);
-                    this.history.execute(new cmd.AddNode(node, data.parent, parent.mindmap));
-                    l_return = node;
+                    const parent = data.parent;
+                    const newNode = new INode(d,parent.mindmap);
+                    this.history.execute(new cmd.AddNode(newNode, parent, parent.mindmap));
+                    l_return = newNode;
+                } else {
+                    throw new Error('Cannot add a node without a parent');
                 }
                 break;
             case 'deleteNodeAndChild':
-                if(data){
-                    var node =data.node;
+                if(data?.node){
+                    const node = data.node;
                     this.history.execute(new cmd.RemoveNode(node, node.mindmap));
+                } else {
+                    throw new Error('Cannot delete a node without a selection');
                 }
                 break;
             case 'deleteNodeExcludeChild':
                 break;
             case 'changeNodeText':
-                if(data){
+                if(data?.node && data.oldText !== undefined && data.text !== undefined){
                     this.history.execute(new cmd.ChangeNodeText(data.node, data.oldText, data.text));
+                } else {
+                    throw new Error('Cannot change node text without a node and its old and new text');
                 }
                 break;
             case 'moveNode':
+                if (!data) {
+                    throw new Error('Cannot move a node without move data');
+                }
                 console.log("inHistory:");
                 console.log(data.inHistory);
                 if(data.inHistory === undefined || data.inHistory == true) {
-                    if(data){
                     this.history.execute(new cmd.MoveNode(data));
-                }
                 } else {// inHistory == false
-                    if(data){
-                        (new cmd.MoveNode(data)).execute();
-                    }
+                    (new cmd.MoveNode(data)).execute();
                 }
-            break;
+                break;
             case 'movePosition':
-                if(data){
+                if(data?.node && data.oldPos && data.newPos){
                     this.history.execute(new cmd.MovePos(data.node,data.oldPos,data.newPos));
+                } else {
+                    throw new Error('Cannot move a position without a node and its old and new positions');
                 }
-               break
+                break
             case 'expandNode':
-                if(data){
+                if(data?.node){
                     this.history.execute(new cmd.ExpandNode(data.node));
+                } else {
+                    throw new Error('Cannot expand without a node');
                 }
                 break;
             case 'collapseNode':
-                if(data){
+                if(data?.node){
                     this.history.execute(new cmd.CollapseNode(data.node));
+                } else {
+                    throw new Error('Cannot collapse without a node');
                 }
-            break
+                break
             case 'pasteNode':
+                if (!data?.node) {
+                    throw new Error('Cannot paste without a destination node');
+                }
                 this.history.execute(new cmd.PasteNode(data.node,data.data));
                 break;
        }
