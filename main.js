@@ -1680,6 +1680,9 @@ class Layout {
         n.containEl.setAttribute('class', '');
         n.containEl.classList.add('mm-node');
         n.containEl.classList.add('mm-node-' + direct);
+        if (n.isSelect) {
+            n.containEl.classList.add('mm-node-select');
+        }
         if (n.isLeaf() && !n.containEl.classList.contains('mm-node-leaf')) {
             n.containEl.classList.add('mm-node-leaf');
         }
@@ -40602,7 +40605,9 @@ class MindMapPlugin extends obsidian.Plugin {
         this.registerEvent(this.app.metadataCache.on("changed", (file) => {
             this.app.workspace.getLeavesOfType(mindmapViewType).forEach((leaf) => {
                 const view = leaf.view;
-                view.onFileMetadataChange(file);
+                if (view instanceof MindMapView) {
+                    view.onFileMetadataChange(file);
+                }
             });
         }));
         // @ts-ignore
