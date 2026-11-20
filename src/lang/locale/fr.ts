@@ -44,6 +44,8 @@ export default {
     "Undo":"Annuler",
     "Redo":"Rétablir",
     'Replace by the previous text':'Remplacer par le texte précédent',
+    'No previous text for this node':'Aucun texte précédent pour ce nœud',
+    'There is no other sibling to join':'Aucun autre nœud frère à joindre',
     'Edit node':'Modifier le nœud',
     'Add sibling/end editing':'Insérer un noeud frère / Terminer la modification',
     'Insert child':'Insérer un noeud enfant',

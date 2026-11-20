@@ -45,6 +45,8 @@ export default {
     "Undo":"Undo",
     "Redo":"Redo",
     'Replace by the previous text':'Replace by the previous text',
+    'No previous text for this node':'No previous text for this node',
+    'There is no other sibling to join':'There is no other sibling to join',
     'Edit node':'Edit node',
     'Add sibling/end editing':'Insert sibling / End editing',
     'Insert child':'Insert child',

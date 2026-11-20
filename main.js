@@ -121,6 +121,8 @@ var en = {
     "Undo": "Undo",
     "Redo": "Redo",
     'Replace by the previous text': 'Replace by the previous text',
+    'No previous text for this node': 'No previous text for this node',
+    'There is no other sibling to join': 'There is no other sibling to join',
     'Edit node': 'Edit node',
     'Add sibling/end editing': 'Insert sibling / End editing',
     'Insert child': 'Insert child',
@@ -206,6 +208,8 @@ var fr = {
     "Undo": "Annuler",
     "Redo": "Rétablir",
     'Replace by the previous text': 'Remplacer par le texte précédent',
+    'No previous text for this node': 'Aucun texte précédent pour ce nœud',
+    'There is no other sibling to join': 'Aucun autre nœud frère à joindre',
     'Edit node': 'Modifier le nœud',
     'Add sibling/end editing': 'Insérer un noeud frère / Terminer la modification',
     'Insert child': 'Insérer un noeud enfant',
@@ -379,6 +383,17 @@ const basicFrontmatter = [
     "",
     "",
 ].join("\n");
+
+function unprotectGrayStrike(text, prefix) {
+    if (prefix !== '~~' && prefix !== '~={grey}')
+        return text;
+    return text.replace(/~~\.~=\{grey\}/g, '~~~={grey}').replace(/=~\.~~/g, '=~~~');
+}
+function protectGrayStrike(text, prefix) {
+    if (prefix !== '~~')
+        return text;
+    return text.replace(/~~~=\{grey\}/g, '~~.~={grey}').replace(/=~~~/g, '=~.~~');
+}
 
 function keepLastIndex(dom) {
     if (window.getSelection) { //ie11 10 9 ff safari
@@ -664,6 +679,7 @@ class Node$1 {
             l_selectedText = l_selectedText.substring(0, l_selectedText.length - 1);
             l_trailingSpace = true;
         }
+        l_selectedText = unprotectGrayStrike(l_selectedText, i_str_1);
         if (i_check) { // Check in case the pre-/suf-fix must be substracted
             if ((l_selectedText.substring(0, l_str_len) == i_str_1) ||
                 (l_selectedText.substring(0, l_str_len) == i_str_2)) { // Prefix must be substracted, bold first
@@ -694,7 +710,7 @@ class Node$1 {
                     // else: no trailing prefix
                 }
                 else { // A specific suffix is defined
-                    if (l_selectedText.slice(-l_suf_len - 1, -1) == i_str_1) { // Suffix must be substracted
+                    if (l_selectedText.slice(-l_suf_len - 1, -1) == i_suffix) { // Suffix must be substracted
                         l_selectedText = l_selectedText.substring(0, l_selectedText.length - 1 - l_suf_len) +
                             l_selectedText.slice(-1);
                     }
@@ -703,17 +719,17 @@ class Node$1 {
             }
             else if ((l_selectedText.substring(2, 2 + l_str_len) == i_str_1) ||
                 (l_selectedText.substring(2, 2 + l_str_len) == i_str_2)) { // Prefix must be substracted, highlight (?) first
-                l_selectedText = l_selectedText.substring(0, l_str_len) + l_selectedText.substring(4); // Remove prefix
+                l_selectedText = l_selectedText.substring(0, 2) + l_selectedText.substring(2 + l_str_len); // Remove prefix
                 if (i_suffix == "") {
-                    if ((l_selectedText.slice(-2, -2 - l_str_len) == i_str_1) ||
-                        (l_selectedText.slice(-2, -2 - l_str_len) == i_str_2)) { // Suffix must be substracted
+                    if ((l_selectedText.slice(-2 - l_str_len, -2) == i_str_1) ||
+                        (l_selectedText.slice(-2 - l_str_len, -2) == i_str_2)) { // Suffix must be substracted
                         l_selectedText = l_selectedText.substring(0, l_selectedText.length - 2 - l_str_len) +
                             l_selectedText.slice(-2);
                     }
                     // else: no trailing prefix
                 }
                 else { // A specific suffix is defined
-                    if (l_selectedText.slice(-2, -2 - l_suf_len) == i_str_1) { // Suffix must be substracted
+                    if (l_selectedText.slice(-2 - l_suf_len, -2) == i_suffix) { // Suffix must be substracted
                         l_selectedText = l_selectedText.substring(0, l_selectedText.length - 2 - l_suf_len) +
                             l_selectedText.slice(-2);
                     }
@@ -743,6 +759,7 @@ class Node$1 {
                 }
             }
         }
+        l_selectedText = protectGrayStrike(l_selectedText, i_str_1);
         // Add a leading/trailing space if needed
         if (l_leadingSpace) {
             l_selectedText = (" " + l_selectedText);
@@ -1061,6 +1078,9 @@ class Node$1 {
         return index;
     }
     setText(text) {
+        if (typeof text !== 'string') {
+            throw new TypeError('Cannot set node text to a non-string value');
+        }
         this.data.text = text;
         this.contentEl.innerHTML = '';
         this.parseText();
@@ -7926,6 +7946,7 @@ class ChangeNodeText extends Command {
         this.isFirst = true;
     }
     execute() {
+        this.node.previousText = this.oldText;
         //if(!this.isFirst){
         this.node.setText(this.text);
         //}
@@ -7935,6 +7956,7 @@ class ChangeNodeText extends Command {
         return true; //exit with no error
     }
     undo() {
+        this.node.previousText = this.text;
         this.node.setText(this.oldText);
         this.node.clearCacheData();
         this.node.refreshBox();
@@ -8102,6 +8124,61 @@ class ExpandNode extends Command {
         this.node.select();
     }
 }
+class JoinNodes extends Command {
+    constructor(node, joinedNode, text) {
+        super('joinNodes');
+        if (!joinedNode.parent || node.parent !== joinedNode.parent || node === joinedNode) {
+            throw new Error('Cannot join a node without another sibling');
+        }
+        this.node = node;
+        this.joinedNode = joinedNode;
+        this.parent = joinedNode.parent;
+        this.index = this.parent.children.indexOf(joinedNode);
+        this.mind = node.mindmap;
+        this.textChange = new ChangeNodeText(node, node.data.text, text);
+        this.pastes = joinedNode.children.map(child => {
+            const copied = JSON.parse(this.mind.copyNode(child));
+            return new PasteNode(node, copied.text);
+        });
+        this.wasExpanded = node.isExpand;
+    }
+    execute() {
+        this.textChange.execute();
+        if (this.pastes.length && !this.node.isExpand) {
+            this.node.expand();
+            this.node.clearCacheData();
+        }
+        this.pastes.forEach(paste => {
+            if (paste.firstNode) {
+                this.mind.addNode(paste.firstNode, this.node);
+            }
+            else {
+                paste.execute();
+            }
+        });
+        this.mind.removeNode(this.joinedNode);
+        this.finish();
+        return true;
+    }
+    undo() {
+        this.mind.addNode(this.joinedNode, this.parent, this.index);
+        for (let i = this.pastes.length - 1; i >= 0; i--) {
+            this.pastes[i].undo();
+        }
+        if (!this.wasExpanded && this.pastes.length) {
+            this.node.collapse();
+        }
+        this.textChange.undo();
+        this.finish();
+    }
+    finish() {
+        this.mind.clearSelectNode();
+        this.node.clearCacheData();
+        this.refresh(this.mind);
+        this.mind.scale(this.mind.mindScale);
+        this.node.select();
+    }
+}
 class PasteNode extends Command {
     constructor(node, data) {
         super('copyNode');
@@ -8200,6 +8277,14 @@ class Exec {
                 }
                 else {
                     throw new Error('Cannot change node text without a node and its old and new text');
+                }
+                break;
+            case 'joinNodes':
+                if ((data === null || data === void 0 ? void 0 : data.node) && data.joinedNode && data.text !== undefined) {
+                    this.history.execute(new JoinNodes(data.node, data.joinedNode, data.text));
+                }
+                else {
+                    throw new Error('Cannot join nodes without both nodes and their combined text');
                 }
                 break;
             case 'moveNode':
@@ -9376,7 +9461,7 @@ class MindMap {
         return waitNode;
     }
     _formatNode(node, i_prefix_1, i_prefix_2, i_suffix = "") {
-        var text = node.data.text;
+        var text = unprotectGrayStrike(node.data.text, i_prefix_1);
         var l_pre_length = i_prefix_1.length;
         var l_suf_length = i_suffix.length;
         if ((text.substring(0, l_pre_length) == i_prefix_1) ||
@@ -9441,6 +9526,7 @@ class MindMap {
                 text = i_prefix_1 + text + i_suffix;
             }
         }
+        text = protectGrayStrike(text, i_prefix_1);
         // Set the text in the node
         node.mindmap.execute('changeNodeText', {
             node: node,
@@ -10040,7 +10126,15 @@ class MindMap {
     }
     // Join the current node with the following node
     joinWithFollowingNode(node, in_asCitation) {
+        if (node.data.isEdit) {
+            this.clearSelectNode();
+            node.select();
+        }
         let joinedNode = node.getNextSibling();
+        if (joinedNode === node) {
+            new obsidian.Notice(t('There is no other sibling to join'));
+            return;
+        }
         // Set node's text, except for the starting emoticon and finishing link (if any)
         const emoticonRegex = /^[\u263a-\u27bf\u{1f300}-\u{1f9ff}]/u;
         // Regex to match links with the link pattern [🔗](...)
@@ -10060,26 +10154,11 @@ class MindMap {
             l_middle_text += "(…)";
         }
         l_middle_text += "<br>";
-        node.setText(node_text + l_middle_text + joinedText);
-        // let joinedText = joinedNode.data.text.replace(emoticonRegex, "").trimStart();
-        // node.setText(node.data.text + " (…) " + joinedText);
-        // node.setText(node.data.text + " (…) " + joinedNode.data.text);
-        if (!joinedNode.isLeaf()) { // The joined node has children: copy them to the current node
-            joinedNode.children.forEach((n) => {
-                var _a;
-                //this._moveAsChild(n, node);
-                let copiedNode = this.copyNode(n);
-                (_a = this.selectNode) === null || _a === void 0 ? void 0 : _a.unSelect();
-                node.select();
-                this.pasteNode(copiedNode);
-            });
-        }
-        // Delete joined node
-        this.removeNode(joinedNode);
-        this.clearSelectNode();
-        this.refresh();
-        this.scale(this.mindScale);
-        node.select();
+        this.execute('joinNodes', {
+            node,
+            joinedNode,
+            text: node_text + l_middle_text + joinedText
+        });
     }
     //execute cmd , store history
     execute(name, data) {
@@ -39844,10 +39923,19 @@ class MindMapPlugin extends obsidian.Plugin {
                     var mindmap = mindmapView.mindmap;
                     var node = mindmap.selectNode;
                     if (node) {
-                        // var text = (node.data.oldText as string);
-                        var text = (node.data.oldText);
-                        node.setText(text);
-                        console.log(text + " / " + node.data.text);
+                        if (node.data.isEdit) {
+                            mindmap.clearSelectNode();
+                            node.select();
+                        }
+                        if (node.previousText === undefined) {
+                            new obsidian.Notice(t('No previous text for this node'));
+                            return;
+                        }
+                        mindmap.execute('changeNodeText', {
+                            node,
+                            oldText: node.data.text,
+                            text: node.previousText
+                        });
                     }
                 }
             }

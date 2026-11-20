@@ -6,6 +6,7 @@ import type { MindMapView } from '../MindMapView'
 import { frontMatterKey, basicFrontmatter } from '../constants';
 import Exec from './Execute'
 import {uuid} from './uuid'
+import { protectGrayStrike, unprotectGrayStrike } from './formatting'
 
 import importXmind  from './import/xmindZen'
 import jsZip from 'jszip'
@@ -1294,7 +1295,7 @@ export default class MindMap {
     }
 
     _formatNode(node: INode, i_prefix_1: string, i_prefix_2: string, i_suffix: string = "") {
-        var text = node.data.text;
+        var text = unprotectGrayStrike(node.data.text, i_prefix_1);
         var l_pre_length = i_prefix_1.length;
         var l_suf_length = i_suffix.length;
 
@@ -1375,6 +1376,7 @@ export default class MindMap {
             { text = i_prefix_1 + text + i_suffix; }
         }
 
+        text = protectGrayStrike(text, i_prefix_1);
         // Set the text in the node
         node.mindmap.execute('changeNodeText',{
             node:node,
@@ -2041,8 +2043,16 @@ export default class MindMap {
 
 
     // Join the current node with the following node
-    joinWithFollowingNode(node: INode, in_asCitation: Boolean) {
+    joinWithFollowingNode(node: INode, in_asCitation: boolean) {
+        if (node.data.isEdit) {
+            this.clearSelectNode();
+            node.select();
+        }
         let joinedNode = node.getNextSibling();
+        if (joinedNode === node) {
+            new Notice(t('There is no other sibling to join'));
+            return;
+        }
 
         // Set node's text, except for the starting emoticon and finishing link (if any)
         const emoticonRegex = /^[\u263a-\u27bf\u{1f300}-\u{1f9ff}]/u;
@@ -2064,31 +2074,11 @@ export default class MindMap {
         { l_middle_text += "(…)"
         }
         l_middle_text += "<br>"
-        node.setText(node_text + l_middle_text + joinedText);
-
-        // let joinedText = joinedNode.data.text.replace(emoticonRegex, "").trimStart();
-        // node.setText(node.data.text + " (…) " + joinedText);
-        // node.setText(node.data.text + " (…) " + joinedNode.data.text);
-
-
-        if(!joinedNode.isLeaf())
-        {// The joined node has children: copy them to the current node
-            joinedNode.children.forEach((n) => {
-                //this._moveAsChild(n, node);
-                let copiedNode = this.copyNode(n);
-                this.selectNode?.unSelect();
-                node.select();
-                this.pasteNode(copiedNode);
-            });
-        }
-
-        // Delete joined node
-        this.removeNode(joinedNode);
-
-        this.clearSelectNode();
-        this.refresh();
-        this.scale(this.mindScale);
-        node.select();
+        this.execute('joinNodes', {
+            node,
+            joinedNode,
+            text: node_text + l_middle_text + joinedText
+        });
     }
 
     //execute cmd , store history

@@ -115,6 +115,7 @@ export class ChangeNodeText extends Command {
         this.isFirst = true;
     }
     execute():boolean {
+        this.node.previousText = this.oldText;
         //if(!this.isFirst){
             this.node.setText(this.text);
         //}
@@ -124,6 +125,7 @@ export class ChangeNodeText extends Command {
         return true; //exit with no error
     }
     undo() {
+        this.node.previousText = this.text;
         this.node.setText(this.oldText);
         this.node.clearCacheData();
         this.node.refreshBox();
@@ -317,6 +319,73 @@ export class ExpandNode extends Command{
     }
  }
 
+
+export class JoinNodes extends Command {
+    node: INode;
+    joinedNode: INode;
+    parent: INode;
+    index: number;
+    mind: MindMap;
+    textChange: ChangeNodeText;
+    pastes: PasteNode[];
+    wasExpanded: boolean;
+
+    constructor(node: INode, joinedNode: INode, text: string) {
+        super('joinNodes');
+        if (!joinedNode.parent || node.parent !== joinedNode.parent || node === joinedNode) {
+            throw new Error('Cannot join a node without another sibling');
+        }
+        this.node = node;
+        this.joinedNode = joinedNode;
+        this.parent = joinedNode.parent;
+        this.index = this.parent.children.indexOf(joinedNode);
+        this.mind = node.mindmap;
+        this.textChange = new ChangeNodeText(node, node.data.text, text);
+        this.pastes = joinedNode.children.map(child => {
+            const copied = JSON.parse(this.mind.copyNode(child));
+            return new PasteNode(node, copied.text);
+        });
+        this.wasExpanded = node.isExpand;
+    }
+
+    execute(): boolean {
+        this.textChange.execute();
+        if (this.pastes.length && !this.node.isExpand) {
+            this.node.expand();
+            this.node.clearCacheData();
+        }
+        this.pastes.forEach(paste => {
+            if (paste.firstNode) {
+                this.mind.addNode(paste.firstNode, this.node);
+            } else {
+                paste.execute();
+            }
+        });
+        this.mind.removeNode(this.joinedNode);
+        this.finish();
+        return true;
+    }
+
+    undo() {
+        this.mind.addNode(this.joinedNode, this.parent, this.index);
+        for (let i = this.pastes.length - 1; i >= 0; i--) {
+            this.pastes[i].undo();
+        }
+        if (!this.wasExpanded && this.pastes.length) {
+            this.node.collapse();
+        }
+        this.textChange.undo();
+        this.finish();
+    }
+
+    finish() {
+        this.mind.clearSelectNode();
+        this.node.clearCacheData();
+        this.refresh(this.mind);
+        this.mind.scale(this.mind.mindScale);
+        this.node.select();
+    }
+}
 
  export class PasteNode extends Command {
     node:INode

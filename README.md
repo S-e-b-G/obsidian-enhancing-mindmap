@@ -62,6 +62,11 @@ The plug-in only support a limited markdown format
 5. synchronize data between boards
 ...
 
+Joining a node with its next sibling (including as a citation) can be undone or
+redone as one action, including copied children. "Replace by the previous text"
+restores the selected node's last text and can also be undone; previous text is
+kept in memory until the mind map is reloaded or closed.
+
 ![test (2)](https://user-images.githubusercontent.com/18719494/124458786-fd1d9b00-ddbf-11eb-8dbc-eeefb5b7abf5.gif)
 
 ## Manual installation

@@ -1,6 +1,7 @@
 import MindMap from './mindmap'
 import {MarkdownRenderer,normalizePath,TFile,parseLinktext,resolveSubpath} from 'obsidian'
 import {t} from '../lang/helpers'
+import { protectGrayStrike, unprotectGrayStrike } from './formatting'
 
 
 export function keepLastIndex(dom:HTMLElement) {
@@ -64,6 +65,7 @@ export default class Node {
     isExpand:boolean=true;
     isSelect:boolean = false;
     _oldText?:string;
+    previousText?:string;
     parent?:Node;
     //isRoot?:boolean;
     children:Node[]=[];
@@ -362,6 +364,7 @@ export default class Node {
             l_trailingSpace = true;
         }
 
+        l_selectedText = unprotectGrayStrike(l_selectedText, i_str_1);
         if(i_check)
         {// Check in case the pre-/suf-fix must be substracted
             if( (l_selectedText.substring(0,l_str_len) == i_str_1)  ||
@@ -400,7 +403,7 @@ export default class Node {
                     // else: no trailing prefix
                 }
                 else{// A specific suffix is defined
-                    if( l_selectedText.slice(-l_suf_len-1, -1) == i_str_1 )
+                    if( l_selectedText.slice(-l_suf_len-1, -1) == i_suffix )
                     {// Suffix must be substracted
                         l_selectedText = l_selectedText.substring(0,l_selectedText.length-1-l_suf_len) +
                         l_selectedText.slice(-1);
@@ -411,11 +414,11 @@ export default class Node {
             else if(    (l_selectedText.substring(2,2+l_str_len) == i_str_1)  ||
                         (l_selectedText.substring(2,2+l_str_len) == i_str_2)  )
             {// Prefix must be substracted, highlight (?) first
-                l_selectedText = l_selectedText.substring(0,l_str_len) + l_selectedText.substring(4); // Remove prefix
+                l_selectedText = l_selectedText.substring(0,2) + l_selectedText.substring(2+l_str_len); // Remove prefix
 
                 if(i_suffix == "") {
-                    if( (l_selectedText.slice(-2, -2-l_str_len) == i_str_1) ||
-                        (l_selectedText.slice(-2, -2-l_str_len) == i_str_2) )
+                    if( (l_selectedText.slice(-2-l_str_len, -2) == i_str_1) ||
+                        (l_selectedText.slice(-2-l_str_len, -2) == i_str_2) )
                     {// Suffix must be substracted
                         l_selectedText = l_selectedText.substring(0,l_selectedText.length-2-l_str_len) +
                         l_selectedText.slice(-2);
@@ -423,7 +426,7 @@ export default class Node {
                     // else: no trailing prefix
                 }
                 else{// A specific suffix is defined
-                    if( l_selectedText.slice(-2, -2-l_suf_len) == i_str_1 )
+                    if( l_selectedText.slice(-2-l_suf_len, -2) == i_suffix )
                     {// Suffix must be substracted
                         l_selectedText = l_selectedText.substring(0,l_selectedText.length-2-l_suf_len) +
                         l_selectedText.slice(-2);
@@ -457,6 +460,7 @@ export default class Node {
             }
         }
 
+        l_selectedText = protectGrayStrike(l_selectedText, i_str_1);
         // Add a leading/trailing space if needed
         if (l_leadingSpace) {
             l_selectedText = (" "+l_selectedText);
@@ -839,6 +843,9 @@ export default class Node {
     }
 
     setText(text:string) {
+        if (typeof text !== 'string') {
+            throw new TypeError('Cannot set node text to a non-string value');
+        }
         this.data.text = text;
         this.contentEl.innerHTML='';
         this.parseText();

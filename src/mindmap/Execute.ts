@@ -8,6 +8,7 @@ interface DataProps {
     node?:INode,
     parent?:INode,
     oldParent?:INode,
+    joinedNode?:INode,
 
     //change node text
     text?:string,
@@ -64,6 +65,13 @@ export default class Exec{
                     this.history.execute(new cmd.ChangeNodeText(data.node, data.oldText, data.text));
                 } else {
                     throw new Error('Cannot change node text without a node and its old and new text');
+                }
+                break;
+            case 'joinNodes':
+                if (data?.node && data.joinedNode && data.text !== undefined) {
+                    this.history.execute(new cmd.JoinNodes(data.node, data.joinedNode, data.text));
+                } else {
+                    throw new Error('Cannot join nodes without both nodes and their combined text');
                 }
                 break;
             case 'moveNode':

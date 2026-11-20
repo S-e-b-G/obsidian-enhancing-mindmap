@@ -5,7 +5,8 @@ import {
   TFile,
   TFolder,
   ViewState,
-  MarkdownView
+  MarkdownView,
+  Notice
 } from 'obsidian';
 // import DEFAULT_SETTINGS from './setting'
 import { around } from 'monkey-around'
@@ -221,10 +222,19 @@ export default class MindMapPlugin extends Plugin {
           var mindmap = mindmapView.mindmap;
           var node = mindmap.selectNode;
           if(node) {
-              // var text = (node.data.oldText as string);
-              var text = (node.data.oldText);
-              node.setText(text);
-              console.log(text+" / "+node.data.text);
+              if (node.data.isEdit) {
+                mindmap.clearSelectNode();
+                node.select();
+              }
+              if (node.previousText === undefined) {
+                new Notice(t('No previous text for this node'));
+                return;
+              }
+              mindmap.execute('changeNodeText', {
+                node,
+                oldText: node.data.text,
+                text: node.previousText
+              });
           }
   }
       }
